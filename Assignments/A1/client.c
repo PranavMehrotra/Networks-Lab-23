@@ -81,9 +81,7 @@ int main()
 	*/
 	while(1){
 		printf("Enter a valid expression(Enter \"-1\" to terminate): ");
-		// scanf("%[^/n]%*c",buf);
 		char *expr = input_expr(stdin);
-		printf("%s\n\n",expr);
 		int y;
 		if(strcmp(expr,"-1")==0){
 			strcpy(buf,"close");

@@ -212,9 +212,9 @@ int main()
 				printf("Bye client!\n");
 				break;
 			}	
-			printf("%s\n",expr);
+			// printf("%s\n",expr);
 			remove_spaces(expr);
-			printf("%s\n",expr);
+			// printf("%s\n",expr);
 			float ans = calc_val(expr,0,strlen(expr));
 			free(expr);
 			printf("%f\n",ans);
