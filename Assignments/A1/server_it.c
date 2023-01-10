@@ -21,53 +21,6 @@ process and a client process.
 #define MAX_SIZE 200
 
 // Helper functions
-// typedef struct c_Stack{
-// 	int top;
-// 	char *arr;
-// 	long cap;
-
-// }c_stack;
-
-// typedef struct f_Stack{
-// 	int top;
-// 	float *arr;
-// 	long cap;
-
-// }f_stack;
-
-// char top(c_stack *a){
-// 	a->arr[a->top];
-// }
-// void push(c_stack *a, char c){
-// 	a->arr[a->top++] = c;
-// }
-// char pop(c_stack *a){
-// 	if(a->top)
-// 		return a->arr[--a->top];
-// }
-
-
-// float top(f_stack *a){
-// 	a->arr[a->top];
-// }
-// void push(f_stack *a, float c){
-// 	a->arr[a->top++] = c;
-// }
-// float pop(f_stack *a){
-// 	if(a->top)
-// 		return a->arr[--a->top];
-// }
-
-
-
-
-
-
-
-
-
-
-
 
 int isNum(char ch)
 {
@@ -112,9 +65,10 @@ float get_num(char *a, int *i, int j){
 
 float expr_val(float a, char op, float b){
 	if(op=='+')	return a+b;
-	if(op=='-')	return a-b;
-	if(op=='*')	return a*b;
-	if(op=='/')	return a/b;
+	else if(op=='-')	return a-b;
+	else if(op=='*')	return a*b;
+	else if(op=='/')	return a/b;
+	else return 0;
 }
 
 
@@ -142,25 +96,23 @@ char *recieve_expr(int newsockfd){
 	int len=0,size = 100;
 	s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
-	while(recv(newsockfd,s+len,1,0)){
+	while(recv(newsockfd,s+len,1,0)>0){
 		if(s[len++]=='\0')	break;
 		if(len==size){
 			s = realloc(s,sizeof(char)*(size+=100));
 			if(!s)	return NULL;
 		}
 	}
+	if(len==0){
+		free(s);
+		return NULL;
+	}
 	s = realloc(s,sizeof(char)*len);
 	return s;
 }
 
 
-
-
-
-
-
-
-			/* THE SERVER PROCESS */
+		/* THE SERVER PROCESS */
 
 int main()
 {
@@ -255,12 +207,12 @@ int main()
 		*/ 
 		while(1){
 			char *expr = recieve_expr(newsockfd);
-			printf("%s\n",expr);
-			if(strcmp(expr,"close")==0){
+			if(!expr || strcmp(expr,"close")==0){
 				free(expr);
 				printf("Bye client!\n");
 				break;
 			}	
+			printf("%s\n",expr);
 			remove_spaces(expr);
 			printf("%s\n",expr);
 			float ans = calc_val(expr,0,strlen(expr));
