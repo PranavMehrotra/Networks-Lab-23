@@ -12,23 +12,38 @@
 #include <arpa/inet.h>
 #define MAX_SIZE 200
 
-char * input_expr(FILE *fp){
+int input_expr(FILE *fp, int sockfd){
 	char c;
-	char *s;
-	int len = 0,size=100;
-	s = (char *)malloc(sizeof(char)*size);
-	if(!s)	return NULL;
+	int len = 0,size=10,f=0,y;
+	char s[size+1];
+	s[size]=  '\0';
 	while((c=fgetc(fp))!=EOF && c!='\n'){
 		s[len++] = c;
 		if(len==size){
-			s = realloc(s,sizeof(char)*(size+=100));
-			if(!s)	return NULL;
+			y = send(sockfd, s, size, 0);
+			if(y!=size){
+				printf("\nError: Failed to send data to the server. Please try again.\n");
+				return 0;
+			}
+			len=0;
+			f=1;
+			// printf("One chunk sent. '%s'\n",s);
 		}
 	}
 	s[len++] = '\0';
-
-	s = realloc(s,sizeof(char)*len);
-	return s;
+	if(f==0 && strcmp(s,"-1")==0){
+		char buf[10] = "close";
+		send(sockfd, buf, strlen(buf) + 1, 0);
+		printf("Bye!\n");
+		return 1;
+	}
+	y=send(sockfd, s, len, 0);
+	if(y!=len){
+		printf("\nError: Failed to send data to the server. Please try again.\n");
+		return 0;
+	}
+	// printf("Last chunk sent. '%s'\n",s);
+	return 0;
 }
 
 
@@ -39,7 +54,6 @@ int main()
 	struct sockaddr_in	serv_addr;
 
 	int i;
-	char buf[MAX_SIZE];
 
 	/* Opening a socket is exactly similar to the server process */
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -81,21 +95,15 @@ int main()
 	*/
 	while(1){
 		printf("Enter a valid expression(Enter \"-1\" to terminate): ");
-		char *expr = input_expr(stdin);
-		int y;
-		if(strcmp(expr,"-1")==0){
-			strcpy(buf,"close");
-			send(sockfd, buf, strlen(buf) + 1, 0);
-			free(expr);
-			printf("Bye!\n\n");
+		char *expr;
+		if(input_expr(stdin,sockfd))	break;
+		float ans;
+		int x = recv(sockfd, &ans, sizeof(float), 0);
+		if(x!=sizeof(float)){
+			printf("Cannot fetch results from the server. Please try again later.\n");
 			break;
 		}
-		else
-			y=send(sockfd, expr, strlen(expr) + 1, 0);
-		free(expr);
-		printf("\t%d\n",y);
-		int x = recv(sockfd, buf, MAX_SIZE, 0);
-		printf("Value of the expression: %7s\n\t%d\n",buf,x);
+		printf("Value of the expression: %.4f\n",ans);
 	}
 	close(sockfd);
 	return 0;

@@ -18,7 +18,6 @@ process and a client process.
 #include <arpa/inet.h>
 #include <time.h>
 
-#define MAX_SIZE 200
 
 // Helper functions
 
@@ -28,14 +27,16 @@ int isNum(char ch)
 }
 
 void remove_spaces(char *a){
-	int i=0,j=0;
-	char b[strlen(a)+1];
+	int i=0,j=0,k=strlen(a);
+	if(k==0)	return;
+	char b[k+1];
 	while(a[i]!='\0'){
 		if(a[i++]==' ')	continue;
 		b[j++] = a[i-1];
 	}
 	b[j] = '\0';
 	strcpy(a,b);
+	a = realloc(a,strlen(a));
 }
 
 float calc_val(char *, int , int );
@@ -55,12 +56,17 @@ float get_num(char *a, int *i, int j){
 		*i = p;
 		return b;
 	}
-	float b=0;
+	float b;
 	char c[j-*i+1];
 	int p=*i;
 	while(*i<j && isNum(a[*i]))	(*i)++;
+	// printf("\n%s,  %d  ,  %d",a,p,*i);
+	// printf("\n\t\t%s\n",c);
 	strncpy(c,a+p,*i-p);
+	c[*i-p]='\0';
 	b = atof(c);
+	// printf("\n\t\t%s\n",c);
+	return b;
 }
 
 float expr_val(float a, char op, float b){
@@ -93,14 +99,17 @@ float calc_val(char *arr, int i, int j){
 char *recieve_expr(int newsockfd){
 	char c;
 	char *s;
-	int len=0,size = 100;
+	printf("\n");
+	int len=0,size = 50,y,chunk=10;
 	s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
-	while(recv(newsockfd,s+len,1,0)>0){
-		if(s[len++]=='\0')	break;
-		if(len==size){
-			s = realloc(s,sizeof(char)*(size+=100));
+	while(y=recv(newsockfd,s+len,chunk,0)){
+		len+=y;
+		if(s[len-1]=='\0')	break;
+		while(len+chunk>=size){
+			s = realloc(s,sizeof(char)*(size*=2));
 			if(!s)	return NULL;
+			printf("\t%d",size);
 		}
 	}
 	if(len==0){
@@ -121,7 +130,6 @@ int main()
 	struct sockaddr_in	cli_addr, serv_addr;
 
 	int i;
-	char buf[MAX_SIZE];		/* We will use this buffer for communication */
 
 	/* The following system call opens a socket. The first parameter
 	   indicates the family of the protocol to be followed. For internet
@@ -207,19 +215,20 @@ int main()
 		*/ 
 		while(1){
 			char *expr = recieve_expr(newsockfd);
+			printf("\n");
 			if(!expr || strcmp(expr,"close")==0){
 				free(expr);
 				printf("Bye client!\n");
 				break;
 			}	
-			// printf("%s\n",expr);
+			// printf("'%s'\n%d",expr,strlen(expr));
 			remove_spaces(expr);
-			// printf("%s\n",expr);
+			// printf("'%s'\n%d",expr,strlen(expr));
 			float ans = calc_val(expr,0,strlen(expr));
 			free(expr);
 			printf("%f\n",ans);
-			gcvt(ans,20,buf);
-			send(newsockfd, buf, strlen(buf) + 1, 0);
+			// gcvt(ans,20,buf);
+			send(newsockfd, &ans, sizeof(float), 0);
 		}
 		close(newsockfd);
 	}
