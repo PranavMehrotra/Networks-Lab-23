@@ -60,18 +60,6 @@ int main()
 	for(i=0; i < 100; i++) buf[i] = '\0';
 	recv(sockfd, buf, 100, 0);
 	printf("Current Server Date and Time: %s\n", buf);
-
-	
-	// printf("Do you want to close the server: ");
-	// scanf("%s",buf);
-	// if(strcmp(buf,"Y")==0 || strcmp(buf,"y")==0){
-	// 	strcpy(buf,"close");
-	// 	send(sockfd, buf, strlen(buf) + 1, 0);
-	// }
-	// else{
-	// 	strcpy(buf,"continue");
-	// 	send(sockfd, buf, strlen(buf) + 1, 0);
-	// }
 	close(sockfd);
 	return 0;
 

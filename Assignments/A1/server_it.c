@@ -60,12 +60,9 @@ float get_num(char *a, int *i, int j){
 	char c[j-*i+1];
 	int p=*i;
 	while(*i<j && isNum(a[*i]))	(*i)++;
-	// printf("\n%s,  %d  ,  %d",a,p,*i);
-	// printf("\n\t\t%s\n",c);
 	strncpy(c,a+p,*i-p);
 	c[*i-p]='\0';
 	b = atof(c);
-	// printf("\n\t\t%s\n",c);
 	return b;
 }
 
@@ -99,7 +96,7 @@ float calc_val(char *arr, int i, int j){
 char *recieve_expr(int newsockfd){
 	char c;
 	char *s;
-	printf("\n");
+	// printf("\n");
 	int len=0,size = 50,y,chunk=10;
 	s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
@@ -109,7 +106,7 @@ char *recieve_expr(int newsockfd){
 		while(len+chunk>=size){
 			s = realloc(s,sizeof(char)*(size*=2));
 			if(!s)	return NULL;
-			printf("\t%d",size);
+			// printf("\t%d",size);
 		}
 	}
 	if(len==0){
@@ -220,14 +217,11 @@ int main()
 				free(expr);
 				printf("Bye client!\n");
 				break;
-			}	
-			// printf("'%s'\n%d",expr,strlen(expr));
+			}
 			remove_spaces(expr);
-			// printf("'%s'\n%d",expr,strlen(expr));
 			float ans = calc_val(expr,0,strlen(expr));
 			free(expr);
 			printf("%f\n",ans);
-			// gcvt(ans,20,buf);
 			send(newsockfd, &ans, sizeof(float), 0);
 		}
 		close(newsockfd);

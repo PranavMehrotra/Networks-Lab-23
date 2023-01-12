@@ -15,15 +15,16 @@
 int input_expr(FILE *fp, int sockfd){
 	char c;
 	int len = 0,size=10,f=0,y;
-	char s[size+1];
-	s[size]=  '\0';
+	char s[size];
+	// char s[size+1];
+	// s[size]=  '\0';
 	while((c=fgetc(fp))!=EOF && c!='\n'){
 		s[len++] = c;
 		if(len==size){
 			y = send(sockfd, s, size, 0);
 			if(y!=size){
-				printf("\nError: Failed to send data to the server. Please try again.\n");
-				return 0;
+				printf("\nError: Failed to send data to the server. Please try again later.\n");
+				return 1;
 			}
 			len=0;
 			f=1;
@@ -39,8 +40,8 @@ int input_expr(FILE *fp, int sockfd){
 	}
 	y=send(sockfd, s, len, 0);
 	if(y!=len){
-		printf("\nError: Failed to send data to the server. Please try again.\n");
-		return 0;
+		printf("\nError: Failed to send data to the server. Please try again later.\n");
+		return 1;
 	}
 	// printf("Last chunk sent. '%s'\n",s);
 	return 0;
