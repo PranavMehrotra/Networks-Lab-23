@@ -36,7 +36,7 @@ void remove_spaces(char *a){
     if(b[j-1]==' ') b[j-1]='\0';
 	else b[j] = '\0';
 	strcpy(a,b);
-	// a = realloc(a,strlen(a));
+	a = realloc(a,strlen(a));
 }
 
 int get_op(char *a, char *op, char *arg){
@@ -72,19 +72,20 @@ void remove_back_slashes(char *a){
 	}
     b[j] = '\0';
 	strcpy(a,b);
-    // a = realloc(a,strlen(a));
 }
 
 char *recieve_expr(int newsockfd){
 	char c;
 	char *s;
 	// printf("\n");
-	int len=0,size = 50,y,chunk=10;
+	int len=0,size = MAX_SIZE,y,chunk=10;
 	s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
-	while(y=recv(newsockfd,s+len,chunk,0)){
+	while((y=recv(newsockfd,s+len,chunk,0))>0){
+		// printf("Hell y = %d\n",y);
 		len+=y;
 		if(s[len-1]=='\0')	break;
+		printf("\t%c\n",s[len-2]);
 		while(len+chunk>=size){
 			s = realloc(s,sizeof(char)*(size*=2));
 			if(!s)	return NULL;
@@ -96,7 +97,24 @@ char *recieve_expr(int newsockfd){
 		return NULL;
 	}
 	s = realloc(s,sizeof(char)*len);
+	// printf("Hell\n");
 	return s;
+}
+
+void send_expr(int newsockfd, char *expr){
+	int len=0,size = strlen(expr),y,chunk=MAX_SIZE;
+	if(size<chunk){
+		send(newsockfd,expr,size+1,0);
+		return;
+	}
+	while(1){
+		if(len+chunk>size){
+			send(newsockfd,expr+len,size-len+1,0);
+			break;
+		}
+		y=send(newsockfd,expr+len,chunk,0);
+		len+=y;
+	}
 }
 
 int main()
@@ -154,7 +172,7 @@ int main()
 	// 		printf("Invalid operation.\n");
 	// 	}
     // }
-    exit(0);
+    // exit(0);
 
 	/* The following system call opens a socket. The first parameter
 	   indicates the family of the protocol to be followed. For internet
@@ -241,24 +259,27 @@ int main()
 			*/
 			char buf[MAX_SIZE];		/* We will use this buffer for communication */
 			char op[20],arg[argmax_size],ans[argmax_size];
+			char *expression;
+			char inval[7] = "$$$$",err[7]="####";
 			struct dirent *comp;
 			DIR *dir;
-			strcpy(buf,"LOGIN: ");
+			strcpy(buf,"LOGIN:");
 			send(newsockfd, buf, strlen(buf) + 1, 0);
 
 			/* We again initialize the buffer, and receive a 
 			   message from the client. 
 			*/
-			recv(newsockfd, buf, MAX_SIZE, 0);
-			printf("%s\n", buf);
+			// printf("Waiting for client to send data...\n");
+			expression = recieve_expr(newsockfd);
+			// printf("Hele : %s\n", expression);
             FILE *fp = fopen("users.txt","r");
             int n,f=0;
             char s[MAX_SIZE];
             while (fgets(s,MAX_SIZE,fp)){
                 n = strlen(s);
-                if(n<=1)    break;
+                if(n<1)    continue;
                 s[n-1] = '\0';
-                if(strcmp(buf,s)==0){
+                if(strcmp(expression,s)==0){
                     f=1;
                     strcpy(buf,"FOUND");
 			        send(newsockfd, buf, strlen(buf) + 1, 0);
@@ -270,11 +291,11 @@ int main()
                 strcpy(buf,"NOT-FOUND");
                 send(newsockfd, buf, strlen(buf) + 1, 0);
                 close(newsockfd);
+				printf("Username not found. Bye client!\n");
                 exit(0);
             }
             while(1){
                 char *expr = recieve_expr(newsockfd);
-                printf("\n");
                 if(!expr || strcmp(expr,"exit")==0){
                     free(expr);
                     printf("Bye client!\n");
@@ -285,46 +306,59 @@ int main()
                     free(expr);
                     continue;
                 }
-                if(get_op(buf,op,arg)){
+                if(get_op(expr,op,arg)){
 					printf("Too many arguments\n");
+					send(newsockfd, inval, strlen(inval) + 1, 0);
+					free(expr);
 					continue;
 				}
 				else{
 					printf("%s , %s\n",op,arg);
 				}
+				free(expr);
 				remove_back_slashes(arg);
-				if(strcmp(op,"exit")==0)    break;
-				else if(strcmp(op,"pwd")==0){
+				if(strcmp(op,"pwd")==0){
 					if(getcwd(ans,argmax_size)==NULL){
 						printf("Error in execution\n");
+						send(newsockfd, err, strlen(err) + 1, 0);
 					}
 					else{
 						printf("\t%s\n",ans);
+						send_expr(newsockfd,ans);
 					}
 				}
 				else if(strcmp(op,"cd")==0){
 					if(chdir(arg)<0){
 						printf("Error in execution\n");
+						send(newsockfd, err, strlen(err) + 1, 0);
 					}
 					else{
 						getcwd(ans,argmax_size);
-						printf("\t%s\n",ans);
-						printf("Changed successfully\n");
+						printf("%s\n",ans);
+						// printf("Changed successfully\n");
+						send_expr(newsockfd,ans);
 					}
 				}
 				else if(strcmp(op,"dir")==0){
 					dir = opendir(arg);
 					if(dir==NULL){
 						printf("Error in execution\n");
+						send(newsockfd, err, strlen(err) + 1, 0);
 					}
 					else{
-						while ((comp = readdir(dir)) != NULL) 
-							printf("%s\n", comp->d_name); 
+						strcpy(ans,"");
+						while ((comp = readdir(dir)) != NULL){
+							// printf("%s\t", comp->d_name); 
+							strncat(ans,comp->d_name,strlen(comp->d_name)+1);
+							strncat(ans,"\n",3);
+						}
 						closedir(dir);
+						send_expr(newsockfd,ans);
 					}
 				}
 				else{
 					printf("Invalid operation.\n");
+					send(newsockfd, inval, strlen(inval) + 1, 0);
 				}
 		    }
 			close(newsockfd);
