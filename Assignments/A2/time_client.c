@@ -9,7 +9,7 @@
 #include <netinet/in.h> 
 #include <poll.h>
   
-#define MAX_SIZE 100
+#define MAX_SIZE 50
 
 int main() { 
     int sockfd; 
@@ -35,7 +35,7 @@ int main() {
     struct pollfd fdset[1];
     fdset[0].fd = sockfd;
     fdset[0].events = POLLIN;
-    int timeout = 1000; 
+    int timeout = 3000; 
     char buf[MAX_SIZE];
     len = sizeof(serv_addr);
     while(t<5){
@@ -52,7 +52,7 @@ int main() {
         }
     }
 
-    printf("Timeout exceeded! \n"); 
+    printf("Timeout exceeded!\n"); 
            
     close(sockfd); 
     return 0; 

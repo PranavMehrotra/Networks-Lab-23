@@ -73,21 +73,6 @@ char *recieve_expr(int newsockfd){
 	return s;
 }
 
-// void send_expr(int newsockfd, char *expr){
-// 	int len=0,size = strlen(expr),y,chunk=MAX_SIZE;
-// 	if(size<chunk){
-// 		send(newsockfd,expr,size+1,0);
-// 		return;
-// 	}
-// 	while(1){
-// 		if(len+chunk>size){
-// 			send(newsockfd,expr+len,size-len+1,0);
-// 			break;
-// 		}
-// 		y=send(newsockfd,expr+len,chunk,0);
-// 		len+=y;
-// 	}
-// }
 
 
 int main()
@@ -135,25 +120,19 @@ int main()
 	   block when the server is not receiving and vice versa. For
 	   non-blocking modes, refer to the online man pages.
 	*/
-	char *expr1,*expr2;
-    expr1 = recieve_expr(sockfd);
-    printf("%s", expr1);
-    // scanf("%s", buf);
-    // printf("%s\n", buf);
-	free(expr1);
+	char *expression;
+    expression = recieve_expr(sockfd);
+    printf("%s", expression);
+	free(expression);
     input_expr(stdin,sockfd);
-	printf("Username sent\n");
-    expr2 = recieve_expr(sockfd);
-	printf("Username sent %s\n",expr2);
-    if(strcmp(expr2, "NOT-FOUND")==0){
+    expression = recieve_expr(sockfd);
+    if(strcmp(expression, "NOT-FOUND")==0){
         printf("Invalid Username\n");
         close(sockfd);
-		free(expr2);
+		free(expression);
         exit(0);
     }
-    // printf("%s\n", buf);
-    // fgets(buf, MAX_SIZE, stdin);
-	free(expr2);
+	free(expression);
 	while(1){
         printf("Enter a shell command: ");
 		char *expr;

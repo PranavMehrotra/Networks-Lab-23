@@ -18,10 +18,10 @@ process and a client process.
 #include <arpa/inet.h>
 #include <dirent.h>
 
-			/* THE SERVER PROCESS */
+/* THE SERVER PROCESS */
 
 #define MAX_SIZE 50
-#define argmax_size 2048
+#define argmax_size 1024
 
 void remove_spaces(char *a){
 	int i=0,j=0,k=strlen(a),f=1;
@@ -77,19 +77,15 @@ void remove_back_slashes(char *a){
 char *recieve_expr(int newsockfd){
 	char c;
 	char *s;
-	// printf("\n");
 	int len=0,size = MAX_SIZE,y,chunk=10;
 	s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
 	while((y=recv(newsockfd,s+len,chunk,0))>0){
-		// printf("Hell y = %d\n",y);
 		len+=y;
 		if(s[len-1]=='\0')	break;
-		printf("\t%c\n",s[len-2]);
 		while(len+chunk>=size){
 			s = realloc(s,sizeof(char)*(size*=2));
 			if(!s)	return NULL;
-			// printf("\t%d",size);
 		}
 	}
 	if(len==0){
@@ -97,7 +93,6 @@ char *recieve_expr(int newsockfd){
 		return NULL;
 	}
 	s = realloc(s,sizeof(char)*len);
-	// printf("Hell\n");
 	return s;
 }
 
@@ -124,55 +119,6 @@ int main()
 	struct sockaddr_in	cli_addr, serv_addr;
 
 	int i;
-	
-    // while(1){
-    //     printf("Enter Command: ");
-    //     fgets(buf,50,stdin);
-    //     buf[strlen(buf)-1]= '\0';
-    //     remove_spaces(buf);
-    //     if(get_op(buf,op,arg)){
-    //         printf("Too many arguments\n");
-    //         continue;
-    //     }
-    //     else{
-    //         printf("%s , %s\n",op,arg);
-    //     }
-    //     remove_back_slashes(arg);
-    //     if(strcmp(op,"exit")==0)    break;
-    //     else if(strcmp(op,"pwd")==0){
-    //         if(getcwd(ans,argmax_size)==NULL){
-    //             printf("Error in execution\n");
-    //         }
-    //         else{
-    //             printf("\t%s\n",ans);
-    //         }
-    //     }
-    //     else if(strcmp(op,"cd")==0){
-    //         if(chdir(arg)<0){
-    //             printf("Error in execution\n");
-    //         }
-    //         else{
-    //             getcwd(ans,argmax_size);
-    //             printf("\t%s\n",ans);
-    //             printf("Changed successfully\n");
-    //         }
-    //     }
-	// 	else if(strcmp(op,"dir")==0){
-	// 		dir = opendir(arg);
-	// 		if(dir==NULL){
-	// 			printf("Error in execution\n");
-	// 		}
-	// 		else{
-	// 			while ((comp = readdir(dir)) != NULL) 
-    //         		printf("%s\n", comp->d_name); 
-    // 			closedir(dir);
-	// 		}
-	// 	}
-	// 	else{
-	// 		printf("Invalid operation.\n");
-	// 	}
-    // }
-    // exit(0);
 
 	/* The following system call opens a socket. The first parameter
 	   indicates the family of the protocol to be followed. For internet
@@ -258,8 +204,10 @@ int main()
 			   and send the message to the client. 
 			*/
 			char buf[MAX_SIZE];		/* We will use this buffer for communication */
-			char op[20],arg[argmax_size],ans[argmax_size];
-			char *expression;
+			char op[20],arg[argmax_size];
+			char *expression,*ans;
+			int ans_size = argmax_size,ans_len=0;
+			ans = (char *)malloc(sizeof(char)*ans_size);
 			char inval[7] = "$$$$",err[7]="####";
 			struct dirent *comp;
 			DIR *dir;
@@ -269,16 +217,14 @@ int main()
 			/* We again initialize the buffer, and receive a 
 			   message from the client. 
 			*/
-			// printf("Waiting for client to send data...\n");
 			expression = recieve_expr(newsockfd);
-			// printf("Hele : %s\n", expression);
             FILE *fp = fopen("users.txt","r");
             int n,f=0;
             char s[MAX_SIZE];
             while (fgets(s,MAX_SIZE,fp)){
                 n = strlen(s);
                 if(n<1)    continue;
-                s[n-1] = '\0';
+                if(s[n-1]=='\n')	s[n-1] = '\0';
                 if(strcmp(expression,s)==0){
                     f=1;
                     strcpy(buf,"FOUND");
@@ -323,7 +269,6 @@ int main()
 						send(newsockfd, err, strlen(err) + 1, 0);
 					}
 					else{
-						printf("\t%s\n",ans);
 						send_expr(newsockfd,ans);
 					}
 				}
@@ -334,8 +279,6 @@ int main()
 					}
 					else{
 						getcwd(ans,argmax_size);
-						printf("%s\n",ans);
-						// printf("Changed successfully\n");
 						send_expr(newsockfd,ans);
 					}
 				}
@@ -347,10 +290,15 @@ int main()
 					}
 					else{
 						strcpy(ans,"");
+						ans_len=0;
 						while ((comp = readdir(dir)) != NULL){
-							// printf("%s\t", comp->d_name); 
+							if(ans_len+strlen(comp->d_name)+1>=ans_size){
+								ans_size*=2;
+								ans = (char *)realloc(ans,sizeof(char)*ans_size);
+							}
 							strncat(ans,comp->d_name,strlen(comp->d_name)+1);
-							strncat(ans,"\n",3);
+							strncat(ans,"\n",2);
+							ans_len+=strlen(comp->d_name)+1;
 						}
 						closedir(dir);
 						send_expr(newsockfd,ans);
