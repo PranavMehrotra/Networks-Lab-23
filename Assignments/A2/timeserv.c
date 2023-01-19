@@ -46,7 +46,7 @@ int main() {
     char buf[MAX_SIZE];
     len = sizeof(cliaddr);
     while(1){
-        printf("Waiting!\n");
+        // printf("Waiting!\n");
         n=recvfrom(sockfd, (char *)buf, MAX_SIZE, 0, 
         ( struct sockaddr *) &cliaddr, &len);
         if(n>0){
@@ -54,7 +54,7 @@ int main() {
             timeinfo = localtime ( &rawtime );
             strcpy(buf, asctime(timeinfo));
             sendto(sockfd, buf, strlen(buf) + 1, 0,( struct sockaddr *) &cliaddr, len);
-            printf("Time Sent!\n\n");
+            // printf("Time Sent!\n\n");
         }
     }
 

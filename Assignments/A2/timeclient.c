@@ -42,7 +42,7 @@ int main() {
         sendto(sockfd, (const char *)hello, strlen(hello), 0, 
 			(struct sockaddr *) &serv_addr, len); 
         t++;
-        printf("Try number: %d\n",t);
+        // printf("Try number: %d\n",t);
         ret = poll(fdset,1,timeout);
         if(ret>0){
             n=recvfrom(sockfd, buf, MAX_SIZE,0,(struct sockaddr *) &serv_addr, &len);
