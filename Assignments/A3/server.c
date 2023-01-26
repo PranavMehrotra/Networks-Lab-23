@@ -78,6 +78,7 @@ int main(int argc, char** argv)
 	char buf[MAX_SIZE];		/* We will use this buffer for communication */
 	time_t rawtime;
 	struct tm * timeinfo;
+	srand(time(0));
 
 	/* The following system call opens a socket. The first parameter
 	   indicates the family of the protocol to be followed. For internet

@@ -178,7 +178,7 @@ int main(int argc, char **argv)
 			send_expr(serv_sockfd,buf);
 			recv(serv_sockfd,&s1_load,sizeof(int),0);
 			close(serv_sockfd);
-			printf("Load received from %u:%u %d",s1_addr.sin_addr.s_addr,s1_addr.sin_port,s1_load);
+			printf("Load received from %u:%u %d\t",s1_addr.sin_addr.s_addr,s1_addr.sin_port,s1_load);
 			if ((serv_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 				perror("Cannot create socket\n");
 				exit(0);
@@ -192,13 +192,13 @@ int main(int argc, char **argv)
 			send_expr(serv_sockfd,buf);
 			recv(serv_sockfd,&s2_load,sizeof(int),0);
 			close(serv_sockfd);
-			printf("Load received from %u:%u %d",s2_addr.sin_addr.s_addr,s2_addr.sin_port,s2_load);
+			printf("Load received from %u:%u %d\n",s2_addr.sin_addr.s_addr,s2_addr.sin_port,s2_load);
 			rem_time = TIMEOUT;
-			continue;
 		}
 		else{
 			t2 = time(NULL);
-			rem_time = rem_time - (t2-t1);
+			printf("\t\t %d\n",t2-t1);
+			rem_time = rem_time - (t2-t1)*1000;
 			clilen = sizeof(cli_addr);
 			newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,&clilen) ;
 			if (newsockfd < 0) {
@@ -217,12 +217,13 @@ int main(int argc, char **argv)
 						perror("Unable to connect to server 1\n");
 						exit(0);
 					}
-					printf("Sending client request to %u:%u",s1_addr.sin_addr.s_addr,s1_addr.sin_port);
+					printf("Sending client request to %u:%u\n",s1_addr.sin_addr.s_addr,s1_addr.sin_port);
 					strcpy(buf,"Send Time");
 					send_expr(serv_sockfd,buf);
 					char *expr = recieve_expr(serv_sockfd);
 					close(serv_sockfd);
 					send_expr(newsockfd,expr);
+					free(expr);
 				}
 				else{
 					if ((connect(serv_sockfd, (struct sockaddr *) &s2_addr,
@@ -230,19 +231,20 @@ int main(int argc, char **argv)
 						perror("Unable to connect to server 2\n");
 						exit(0);
 					}
-					printf("Sending client request to %u:%u",s2_addr.sin_addr.s_addr,s2_addr.sin_port);
+					printf("Sending client request to %u:%u\n",s2_addr.sin_addr.s_addr,s2_addr.sin_port);
 					strcpy(buf,"Send Time");
 					send_expr(serv_sockfd,buf);
 					char *expr = recieve_expr(serv_sockfd);
 					close(serv_sockfd);
 					send_expr(newsockfd,expr);
+					free(expr);
 				}
 				close(newsockfd);
 				exit(0);
 			}
 			close(newsockfd);
 		}
-		
+		printf("\t\tRem time :%d\n",rem_time);
 	}
 
 	return 0;

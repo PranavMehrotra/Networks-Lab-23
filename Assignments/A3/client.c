@@ -38,8 +38,14 @@ char *recieve_expr(int newsockfd){
 	return s;
 }
 
-int main()
+int main(int argc, char **argv)
 {
+	if(argc!=2){
+		printf("Usage: ./client <lb_port>\n");
+        exit(0);
+	}
+	int lb_port;
+    lb_port = atoi(argv[1]);
 	int			sockfd ;
 	struct sockaddr_in	serv_addr;
 
@@ -66,7 +72,7 @@ int main()
 
 	serv_addr.sin_family	= AF_INET;
 	inet_aton("127.0.0.1", &serv_addr.sin_addr);
-	serv_addr.sin_port	= htons(20000);
+	serv_addr.sin_port	= htons(lb_port);
 
 	/* With the information specified in serv_addr, the connect()
 	   system call establishes a connection with the server process.
