@@ -97,8 +97,13 @@ void parse_http_response(char* response, int response_len, char** headers, char*
     // Parse the parse_header_start to get the content type, with delimeter '/'
     parse_header_start = strstr(parse_header_start, "/");
     parse_header_start++;
+    // Take until ';'
+    char* parse_header_end = strstr(parse_header_start, ";");
+    if(parse_header_end == NULL){
+        parse_header_end = strstr(parse_header_start, "\r\n");
+    }
     // Take until '\r\n'
-    char* parse_header_end = strstr(parse_header_start, "\r\n");
+    // char* parse_header_end = strstr(parse_header_start, "\r\n");
     // Copy the content type
     *content_type = malloc(parse_header_end - parse_header_start + 1);
     strncpy(*content_type, parse_header_start, parse_header_end - parse_header_start);
