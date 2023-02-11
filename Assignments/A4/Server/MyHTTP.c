@@ -9,7 +9,7 @@
 #include <time.h>
 #include <sys/stat.h>
 
-#define MAX_SIZE 50
+#define MAX_SIZE 500
 #define BUFSIZE 1024
 
 
@@ -50,16 +50,13 @@ long get_file_size(const char *file_name) {
 }
 
 char *recieve_expr(int newsockfd, int *recv_size){
-	char c;
 	char *s;
-	
-	int len=0,size = MAX_SIZE,y,chunk=40;
+	int len=0,size = MAX_SIZE,y,chunk=400;
 	s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
-
 	while((y=recv(newsockfd,s+len,chunk,0))>0){
         len+=y;
-		if(s[len-1]=='\0')	break;
+		// if(s[len-1]=='\0')	break;
 		while(len+chunk>=size){
 			s = realloc(s,sizeof(char)*(size*=2));
 			if(!s)	return NULL;
@@ -102,7 +99,7 @@ int main(void)
 	struct sockaddr_in	cli_addr, serv_addr;
 
 	int i;
-	char buf[MAX_SIZE];		/* We will use this buffer for communication */
+	char buf[BUFSIZE];		/* We will use this buffer for communication */
 
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
 		{perror("Cannot create socket\n");

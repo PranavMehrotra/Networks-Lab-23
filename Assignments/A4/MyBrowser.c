@@ -38,22 +38,16 @@ typedef struct{
 
 
 char *recieve_expr(int newsockfd, int *recv_size){
-	char c;
 	char *s;
-	// printf("\n");
 	int len=0,size = MAX_SIZE,y,chunk=400;
 	s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
-	// printf("Hello\n");
-    // int i=1;
 	while((y=recv(newsockfd,s+len,chunk,0))>0){
-		// printf("%d ",i++);
         len+=y;
 		// if(s[len-1]=='\0')	break;
 		while(len+chunk>=size){
 			s = realloc(s,sizeof(char)*(size*=2));
 			if(!s)	return NULL;
-			// printf("\t%d",size);
 		}
 	}
 	if(len==0){
@@ -62,7 +56,6 @@ char *recieve_expr(int newsockfd, int *recv_size){
 	}
 	s = realloc(s,sizeof(char)*(len+1));
     *recv_size = len;
-	// printf("\n");
     return s;
 }
 
@@ -172,8 +165,14 @@ int main() {
         scanf("%s",url);
         if(strcasecmp(command,"PUT")==0)    scanf("%s",filename);
         // Parse the URL string to extract the hostname (domain name)
-        if (sscanf(url, "http://%255[^:]:%d", hostname, &portno) == 2) {
+        if (sscanf(url, "http://%1000[^:]:%d", hostname, &portno) == 2) {
             // Port is specified in the URL
+            sscanf(url, "http://%255[^/:]", hostname);
+            char temp_url[BUFSIZE];
+            sscanf(url, "http://%1000[^:]", temp_url);
+            strcpy(url,"http://");
+            strcat(url,temp_url);
+            printf("URL: %s\n Port: %d \n Host: %s\n",url,portno,hostname);
         } else if (sscanf(url, "http://%255[^/]", hostname) == 1) {
             // Port is not specified, use the default
         } else {
