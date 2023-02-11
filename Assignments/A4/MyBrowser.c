@@ -62,12 +62,12 @@ char *recieve_expr(int newsockfd, int *recv_size){
 void send_expr(int newsockfd, char *expr, int size){
 	int len=0,y,chunk=MAX_SIZE;
 	if(size<chunk){
-		send(newsockfd,expr,size+1,0);
+		send(newsockfd,expr,size,0);
 		return;
 	}
 	while(1){
 		if(len+chunk>size){
-			send(newsockfd,expr+len,size-len+1,0);
+			send(newsockfd,expr+len,size-len,0);
 			break;
 		}
 		y=send(newsockfd,expr+len,chunk,0);
@@ -94,6 +94,7 @@ int parse_http_response(char *resp, int response_len, response *parsed_response)
     memcpy(parsed_response->body, resp + header_len, body_len);
     parsed_response->body_size = body_len;
     free(resp);
+    printf("Headers: %s\n", headers);
     // Split the headers into individual lines
     char *header_lines[32];
     int num_header_lines = 0;
@@ -152,13 +153,13 @@ int main() {
 
     portno = 80;
     char hostname[BUFSIZE];
-    char command[20],url[BUFSIZE],buffer[2*BUFSIZE],filename[256];
+    char command[20],url[BUFSIZE],buffer[3*BUFSIZE],filename[256];
     char *parse_filename;
     while(1){
         printf("MyOwnBrowser> ");
         scanf("%s",command);
         if(strcasecmp(command,"QUIT")==0)   break;
-        if(strcasecmp(command,"GET") && strcasecmp(command,"PUT")){
+        if(strcasecmp(command,"GET")!=0 && strcasecmp(command,"PUT")!=0){
             printf("Please enter a valid command\n");
             continue;
         }
@@ -172,7 +173,7 @@ int main() {
             sscanf(url, "http://%1000[^:]", temp_url);
             strcpy(url,"http://");
             strcat(url,temp_url);
-            printf("URL: %s\n Port: %d \n Host: %s\n",url,portno,hostname);
+            // printf("URL: %s\n Port: %d \n Host: %s\n",url,portno,hostname);
         } else if (sscanf(url, "http://%255[^/]", hostname) == 1) {
             // Port is not specified, use the default
         } else {
@@ -228,6 +229,7 @@ int main() {
             strcat(buffer, "Accept: */*\r\n");
             strcat(buffer, "Connection: close\r\n");
             strcat(buffer, "\r\n");
+            strcat(buffer, "\r\n\r\n\r\n");
             int total = 0;
             int bytesReceived = 0;
             send_expr(sockfd, buffer, strlen(buffer));
@@ -237,6 +239,7 @@ int main() {
                 printf("No Response\n");
                 continue;
             }
+            printf("Response received\n");
             close(sockfd);
             response resp;
             if(parse_http_response(s, resp_size,&resp)){
