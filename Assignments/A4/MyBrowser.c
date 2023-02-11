@@ -10,6 +10,32 @@
 
 #define BUFSIZE 1024
 #define MAX_SIZE 500
+#define MAX_HEADER_SIZE 256
+
+typedef struct{
+    char *name;
+    char *value;
+}header;
+
+typedef struct{
+    char method[7];
+    char url[BUFSIZE];
+    header *headers;
+    int num_headers;
+    char *body;
+    int body_size;
+}request;
+
+typedef struct{
+    int status_code;
+    char status_message[30];
+    header *headers;
+    int num_headers;
+    char *body;
+    int body_size;
+    char content_type[30];
+}response;
+
 
 char *recieve_expr(int newsockfd, int *recv_size){
 	char c;
@@ -56,59 +82,73 @@ void send_expr(int newsockfd, char *expr, int size){
 	}
 }
 
-int parse_http_response(char* response, int response_len, char** headers, char** content, int* content_length, char **content_type) {
-    const char* header_end = strstr(response, "\r\n\r\n");
+
+int parse_http_response(char *resp, int response_len, response *parsed_response) {
+    // Initialize the response struct
+    memset(parsed_response, 0, sizeof(response));
+    // Split the response into headers and body
+    const char *header_end = strstr(resp, "\r\n\r\n");
     if (header_end == NULL) {
         // Handle error: no header end found
         return 1;
     }
-    size_t header_len = header_end - response + 4;
-    *headers = malloc(header_len + 1);
-    strncpy(*headers, response, header_len);
-    (*headers)[header_len] = '\0';
+    size_t header_len = header_end - resp + 4;
+    char *headers = (char *)malloc((header_len + 1)*sizeof(char));
+    strncpy(headers, resp, header_len);
+    headers[header_len] = '\0';
+    size_t body_len = response_len - header_len;
+    parsed_response->body = (char *)malloc(body_len*sizeof(char));
+    memcpy(parsed_response->body, resp + header_len, body_len);
+    parsed_response->body_size = body_len;
+    free(resp);
+    // Split the headers into individual lines
+    char *header_lines[32];
+    int num_header_lines = 0;
+    char *header_line = strtok(headers, "\r\n");
+    while (header_line != NULL && num_header_lines < 32) {
+        header_lines[num_header_lines++] = header_line;
+        header_line = strtok(NULL, "\r\n");
+        if(header_line==NULL) break;
+    }
+    // Parse the first line to get the HTTP status code
+    if (sscanf(header_lines[0], "HTTP/1.1 %d %s",&(parsed_response->status_code),parsed_response->status_message) < 1) {
+        // Handle error: first line not in correct format
+        free(headers);
+        return 1;
+    }
 
-    size_t content_len = response_len - header_len;
-    *content = malloc(content_len);
-    memcpy(*content, response + header_len, content_len);
-    free(response);
+    // Allocate memory for the headers array
+    parsed_response->headers = (header *)malloc(num_header_lines * sizeof(header));
+    parsed_response->num_headers = num_header_lines;
 
-    // Parse the headers to get the content length
-    char parse_header[100];
-    strcpy(parse_header,"Content-Length: ");
-    char* parse_header_start = strstr(*headers, parse_header);
-    if (parse_header_start == NULL) {
-        // Handle error: content length header not found
-        printf("Content length header not found\n");
-        printf("Content length set to %ld\n", content_len);
-        *content_length = content_len;
-    }
-    else{
-        parse_header_start += strlen(parse_header);
-        *content_length = atoi(parse_header_start);
-    }
-    // Parse the headers to get the content type
-    strcpy(parse_header,"Content-Type: ");
-    parse_header_start = strstr(*headers, parse_header);
-    if (parse_header_start == NULL) {
-        // Handle error: content length header not found
-        printf("Content type header not found\n");
-        *content_type = strdup("txt");
-    }
-    else{
-        parse_header_start += strlen(parse_header);
-        // Parse the parse_header_start to get the content type, with delimeter '/'
-        parse_header_start = strstr(parse_header_start, "/");
-        parse_header_start++;
-        // Take until ';'
-        char* parse_header_end = strstr(parse_header_start, ";");
-        if(parse_header_end == NULL){
-            // Take until '\r\n'
-            parse_header_end = strstr(parse_header_start, "\r\n");
+    // Parse each header line into name and value
+    for (int i = 1; i < num_header_lines; i++) {
+        header *current_header = &parsed_response->headers[i];
+        current_header->name = strtok(header_lines[i], ":");
+        current_header->value = current_header->name + strlen(current_header->name) + 1;
+        while (current_header->value[0] == ' ') current_header->value++;
+        current_header->name = strdup(current_header->name);
+        current_header->value = strdup(current_header->value);
+        if(strcasecmp(current_header->name,"Content-Length")==0){
+            parsed_response->body_size = atoi(current_header->value);
         }
-        *content_type = malloc(parse_header_end - parse_header_start + 1);
-        strncpy(*content_type, parse_header_start, parse_header_end - parse_header_start);
-        (*content_type)[parse_header_end - parse_header_start] = '\0';
+        else if(strcasecmp(current_header->name,"Content-Type")==0){
+            // Parse the content_type to get the content type, with delimeter '/'
+            char *content_type = strstr(current_header->value, "/");
+            content_type++;
+            // Take until ';'
+            char* content_type_end = strstr(content_type, ";");
+            if(content_type_end == NULL){
+                // Take until '\r\n'
+                content_type_end = content_type + strlen(content_type);
+            }
+            strncpy(parsed_response->content_type, content_type, content_type_end - content_type);
+            parsed_response->content_type[content_type_end - content_type] = '\0';
+        }
     }
+
+    // Clean up
+    free(headers);
     return 0;
 }
 
@@ -125,6 +165,10 @@ int main() {
         printf("MyOwnBrowser> ");
         scanf("%s",command);
         if(strcasecmp(command,"QUIT")==0)   break;
+        if(strcasecmp(command,"GET") && strcasecmp(command,"PUT")){
+            printf("Please enter a valid command\n");
+            continue;
+        }
         scanf("%s",url);
         if(strcasecmp(command,"PUT")==0)    scanf("%s",filename);
         // Parse the URL string to extract the hostname (domain name)
@@ -137,7 +181,7 @@ int main() {
             printf("Please enter a valid HTTP URL\n");
             continue;
         }
-        printf("%s\n", hostname);
+        // printf("%s\n", hostname);
         // Perform a DNS lookup to get the IP address
         server = gethostbyname(hostname);
         if (server == NULL) {
@@ -185,43 +229,49 @@ int main() {
             strcat(buffer, "Accept: */*\r\n");
             strcat(buffer, "Connection: close\r\n");
             strcat(buffer, "\r\n");
-            // time_t t1 = time(NULL);
             int total = 0;
             int bytesReceived = 0;
-            // clock_t t1 = clock();
             send_expr(sockfd, buffer, strlen(buffer));
-            // printf("Hello\n");
-            // bzero(buffer, BUFSIZE);
             int resp_size=0;
             char *s = recieve_expr(sockfd,&resp_size);
-            /* Save content to file */
             if(s==NULL || resp_size==0){
                 printf("No Response\n");
                 continue;
             }
-            char *headers, *content;
-            int content_length;
-            char *content_type;
-            if(parse_http_response(s, resp_size, &headers, &content,&content_length, &content_type)){
+            close(sockfd);
+            response resp;
+            if(parse_http_response(s, resp_size,&resp)){
                 printf("Error in parsing the HTTP response\n");
                 continue;
             }
-            printf("\n\n");
-            printf("%s\n", headers);
-            printf("%d\n", content_length);
+
+            // Print the response
+            // printf("Number of headers: %d\n",resp.num_headers);
+            // printf("HTTP/1.1 %d\r\n", resp.status_code);
+            // for (int i = 1; i < resp.num_headers; i++) {
+            //     printf("%s:%s\r\n", resp.headers[i].name, resp.headers[i].value);
+            // }
+            // printf("\r\nContent-Type: %s\r\n", resp.content_type);
+            // printf("%d\n\n", resp.body_size);
+
             FILE *fp;
-            char *file_name = malloc(strlen(content_type) + strlen(filename) + 2);
+            char *file_name = malloc(strlen(resp.content_type) + strlen(filename) + 2);
             strcpy(file_name, filename);
             strcat(file_name, ".");
-            strcat(file_name, content_type);
-            printf("%s\n", file_name);
+            strcat(file_name, resp.content_type);
+            // printf("%s\n", file_name);
             fp = fopen(file_name, "w");
-            fwrite(content, sizeof(char), content_length, fp);
+            fwrite(resp.body, sizeof(char), resp.body_size, fp);
             fclose(fp);
-            free(headers);
-            free(content);
-            free(content_type);
-            close(sockfd);
+
+            // Deallocate Response memory
+            free(resp.body);
+            for(int i=1;i<resp.num_headers;i++){
+                free(resp.headers[i].name);
+                free(resp.headers[i].value);
+            }
+            free(resp.headers);
+
             int pid = fork();
             if(pid==0){
                 char *args[] = {"xdg-open", file_name, NULL};
@@ -245,9 +295,6 @@ int main() {
             printf("Invalid Command\n");
         }
     }
-        /* Open file in Google Chrome */
-    // char *args[] = {"google-chrome", "response.html", NULL};
-    // execvp(args[0], args);
 
     return 0;
 }
