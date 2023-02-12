@@ -196,7 +196,7 @@ int parse_http_request(char *req, int request_len, request *parsed_request) {
 
 void return_response(int status, int newsockfd, const char *hostname, const char *current_time, const char *filename, const char* last_modify_time, const char * file_type)
 {   
-    FILE *file;
+    FILE *file=NULL;
     
     char str[10]; int size;
     char buffer[3*BUFSIZE];
@@ -237,7 +237,8 @@ void return_response(int status, int newsockfd, const char *hostname, const char
         strcat(buffer, "\r\n");
     }
     strcat(buffer, "Connection: close\r\n");
-    file = fopen(filename, "rb");
+    if(filename)
+        file = fopen(filename, "rb");
     if(file){
         size = get_file_size(file);
         sprintf(str, "%d", size);
@@ -263,8 +264,7 @@ void return_response(int status, int newsockfd, const char *hostname, const char
 
 
 int main(void)
-{	
-    // get_content_type("a.c");
+{
 
 	int port_num;
 	int	sockfd, newsockfd ; /* Socket descriptors */
@@ -324,9 +324,7 @@ int main(void)
         for (int i = 1; i < req.num_headers; i++) {
             printf("Header %d: %s: %s\n", i, req.headers[i].name, req.headers[i].value);
         }
-        printf("Content type: %s\n", req.content_type);
-        if(req.body_size > 0)
-            printf("\n\nBody: %s\n", req.body);
+        // printf("Content type: %s\n", req.content_type);
 
 
         FILE *access;

@@ -327,7 +327,7 @@ int main() {
             free(file_name);
         }
         else if(strcasecmp(command,"PUT")==0){
-            printf("%s\n", url);
+            // printf("%s\n", url);
             char content_type[20];
             get_content_type(filename, content_type);
             char file_path[2*BUFSIZE];
@@ -344,7 +344,7 @@ int main() {
                 continue;
             }
             else{
-                printf("--%s\n", filename);
+                // printf("--%s\n", filename);
                 file = fopen(filename, "rb");
                 if (file == NULL) {
                     perror("Error");
@@ -352,7 +352,7 @@ int main() {
                 }
             }
             int size = get_file_size(file);
-            printf("%d\n", size);
+            // printf("%d\n", size);
             char *ba = (char *)malloc(size* sizeof(char));
             sprintf(str, "%d", size);
             int x = fread(ba, size, 1, file);
@@ -365,28 +365,29 @@ int main() {
             strcat(buffer, "\r\n");
             strcat(buffer, "Content-Type: ");
             strcat(buffer, content_type);
+            strcat(buffer, "\r\n");
             strcat(buffer, "Content-Length: ");
             strcat(buffer, str);
             strcat(buffer, "\r\n\r\n");
 
-            printf("%s\n", buffer);
+            // printf("%s\n", buffer);
             
             send_expr(sockfd, buffer, strlen(buffer));
             send_expr(sockfd, ba, size);
             if(strcasecmp(hostname,"0.0.0.0")==0 || strcasecmp(hostname,"localhost")==0)
                 send_expr(sockfd, "\r\n\r\n\r\n", 6);
             free(ba);
-            printf("Sent!\n");
+            // printf("Sent!\n");
             int resp_len;
             char *s = recieve_expr(sockfd,&resp_len);
             if(s==NULL || resp_len==0){
                 printf("No Response\n");
                 continue;
             }
-            printf("Response received\n");
-            close(sockfd);
+            // printf("Response received\n");
             printf("%s\n", s);
-            printf("\t\tHelll\n");
+            free(s);
+            close(sockfd);
         }
         else{
             printf("Invalid Command\n");
