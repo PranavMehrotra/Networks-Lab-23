@@ -320,9 +320,9 @@ int main(void)
         printf("Method: %s\n", req.method);
         printf("URL: %s\n", req.url);
         printf("Body size: %d\n", req.body_size);
-        printf("Number of headers: %d\n", req.num_headers);
+        printf("Number of headers: %d\n", req.num_headers-1);
         for (int i = 1; i < req.num_headers; i++) {
-            printf("Header %d: %s: %s\n", i, req.headers[i].name, req.headers[i].value);
+            printf("%s: %s\n", req.headers[i].name, req.headers[i].value);
         }
         // printf("Content type: %s\n", req.content_type);
 
@@ -344,10 +344,14 @@ int main(void)
 
         char input[2*BUFSIZE];
         sprintf(input, "%s:%s:%s:%d:%s:%s\n",date, t,inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port),req.method, req.url);
-        printf("%s", input);
+        // printf("%s", input);
         access = fopen("AccessLog.txt", "a+");
-        fprintf(access, "%s", input);
-        fclose(access);
+        if(access == NULL)
+            perror("Error opening Access Log file");
+        else{
+            fprintf(access, "%s", input);
+            fclose(access);
+        }
 
         if(strcmp(req.method,"GET")==0){
         FILE *file;
@@ -390,7 +394,7 @@ int main(void)
             strftime(last_modify_time, sizeof(last_modify_time), "%a, %d %b %Y %T GMT", gmt);
             file = fopen(file_name, "rb");
             if(file==NULL){
-                perror("Error in opening file\n");
+                perror("Error in opening file");
                 // strcpy(file_type,"text/html");
                 return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
             }
@@ -398,7 +402,6 @@ int main(void)
                 get_content_type(file_name,file_type);
                 return_response(status, newsockfd, hostname, current_time, file_name, last_modify_time,file_type);
             }
-            printf("Sent!\n");
             }
             
         }
@@ -409,13 +412,13 @@ int main(void)
             file = fopen((req.url)+1, "wb");
             if(file==NULL)
             {
-                perror("Error in opening file\n");
+                perror("Error in opening file");
                 // strcpy(file_type,"text/html");
                 return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
             }
             else{
                 if(fwrite(req.body, 1, req.body_size, file)!=req.body_size){
-                    perror("Error in writing to file\n");
+                    perror("Error in writing to file");
                     status = 500;
                 }
                 fclose(file);

@@ -285,7 +285,6 @@ int main() {
                 printf("Error in parsing the HTTP response\n");
                 continue;
             }
-         
             // Print the response
             // printf("Number of headers: %d\n",resp.num_headers);
             // printf("HTTP/1.1 %d\r\n", resp.status_code);
@@ -385,7 +384,11 @@ int main() {
                 continue;
             }
             // printf("Response received\n");
-            printf("%s\n", s);
+            char *status = strtok(s, " ");
+            status = strtok(NULL, " ");
+            char *status_message = strtok(NULL, "\r\n");
+            printf("%s %s\n", status, status_message);
+            // printf("%s\n", s);
             free(s);
             close(sockfd);
         }
