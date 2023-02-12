@@ -268,7 +268,7 @@ int main() {
                 printf("Error in parsing the HTTP response\n");
                 continue;
             }
-
+         
             // Print the response
             // printf("Number of headers: %d\n",resp.num_headers);
             // printf("HTTP/1.1 %d\r\n", resp.status_code);
@@ -279,12 +279,14 @@ int main() {
             // printf("%d\n\n", resp.body_size);
 
             FILE *fp;
-            char *filename = malloc(strlen(resp.content_type) + strlen(filename) + 2);
-            strcpy(filename, filename);
-            strcat(filename, ".");
-            strcat(filename, resp.content_type);
+            char *file_name = malloc(strlen(resp.content_type) + strlen(filename) + 2);
+         
+            strcpy(file_name, filename);
+            strcat(file_name, ".");
+            strcat(file_name, resp.content_type);
+            printf("%s\n", file_name);
             // printf("%s\n", filename);
-            fp = fopen(filename, "w");
+            fp = fopen(file_name, "w");
             fwrite(resp.body, sizeof(char), resp.body_size, fp);
             fclose(fp);
 
@@ -298,14 +300,14 @@ int main() {
 
             int pid = fork();
             if(pid==0){
-                char *args[] = {"xdg-open", filename, NULL};
+                char *args[] = {"xdg-open", file_name, NULL};
                 freopen("/dev/null", "w", stdout);
                 freopen("/dev/null", "w", stderr);
                 execvp(args[0], args);
                 perror("xdg-open");
                 exit(0);
             }
-            free(filename);
+            free(file_name);
         }
         else if(strcasecmp(command,"PUT")==0){
             printf("hello\n");
@@ -322,7 +324,7 @@ int main() {
         
             FILE *file;
             int result;
-             struct stat st;
+            struct stat st;
             result = stat(filename, &st);
             if (result == -1) {
                 printf("error\n");
