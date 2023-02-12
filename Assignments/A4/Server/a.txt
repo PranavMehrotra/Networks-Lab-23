@@ -1,0 +1,15 @@
+struct tm last_modify = {0};
+
+            struct tm is_modified = {0};
+            for (int i = 1; i < req.num_headers; i++) {
+                if(strcmp(req.headers[i].name, "If-Modified-Since")==0)
+                {
+                    strptime(is_modified, "%a, %d %b %Y %T GMT", &is_modified);
+                }
+            }
+            
+        
+        time_t last_modify_seconds = mktime(&last_modify);
+        time_t is_modified_seconds = mktime(&is_modified);
+        double difference_in_seconds = difftime(last_modify_seconds, is_modified_seconds);
+        printf("Difference between two GMT time objects in seconds: %f\n", difference_in_secon
