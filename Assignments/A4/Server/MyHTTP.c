@@ -9,8 +9,13 @@
 #include <time.h>
 #include <sys/stat.h>
 
-#define MAX_SIZE 500
 #define BUFSIZE 1024
+#define MAX_SIZE 500
+#define CHUNK_SIZE 400
+#define FILE_NAME_SIZE 256
+#define SMALL_MSG_SIZE 30
+#define TIME_BUF_SIZE 30
+#define EXECESS_CHARS_LEN 6
 
 typedef struct{
     char *name;
@@ -24,17 +29,17 @@ typedef struct{
     int num_headers;
     char *body;
     int body_size;
-    char content_type[30];
+    char content_type[SMALL_MSG_SIZE];
 }request;
 
 typedef struct{
     int status_code;
-    char status_message[30];
+    char status_message[SMALL_MSG_SIZE];
     header *headers;
     int num_headers;
     char *body;
     int body_size;
-    char content_type[30];
+    char content_type[SMALL_MSG_SIZE];
 }response;
 
 
@@ -66,12 +71,12 @@ long get_file_size(FILE *file) {
 
 char *recieve_expr(int newsockfd, int *recv_size){
 	char *s;
-	int len=0,size = MAX_SIZE,y,chunk=400;
+	int len=0,size = MAX_SIZE,y,chunk=CHUNK_SIZE;
 	s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
 	while((y=recv(newsockfd,s+len,chunk,0))>0){
         len+=y;
-		if(len>6 && strncmp(s+len-6,"\r\n\r\n\r\n",6)==0)	break;
+		if(len>EXECESS_CHARS_LEN && strncmp(s+len-EXECESS_CHARS_LEN,"\r\n\r\n\r\n",EXECESS_CHARS_LEN)==0)	break;
 		while(len+chunk>=size){
 			s = realloc(s,sizeof(char)*(size*=2));
 			if(!s)	return NULL;
@@ -81,7 +86,7 @@ char *recieve_expr(int newsockfd, int *recv_size){
 		free(s);
 		return NULL;
 	}
-	s = realloc(s,sizeof(char)*(len-6+1));
+	s = realloc(s,sizeof(char)*(len-EXECESS_CHARS_LEN+1));
     *recv_size = len;
     return s;
 }
@@ -189,53 +194,71 @@ int parse_http_request(char *req, int request_len, request *parsed_request) {
     return 0;
 }
 
-void return_response(int status, int newsockfd, char *hostname, char *as, char *filename, char* time, char* file_type)
+void return_response(int status, int newsockfd, const char *hostname, const char *current_time, const char *filename, const char* last_modify_time, const char * file_type)
 {   
     FILE *file;
     
     char str[10]; int size;
-    char buffer[5*BUFSIZE];
-    char *ba;
-    file = fopen(filename, "rb");
+    char buffer[3*BUFSIZE];
+    char *ba=NULL;
 
     if(status==200){
         sprintf(buffer, "HTTP/1.1 %d OK\r\n", status);
-        
-        
-        strcat(buffer, "Last-Modified: ");
-        strcat(buffer,time);
-        strcat(buffer, "\r\n");
+        if(last_modify_time){
+            strcat(buffer, "Last-Modified: ");
+            strcat(buffer,last_modify_time);
+            strcat(buffer, "\r\n");
+        }
         
     }
-    if(status == 404)
+    else if(status == 404)
     {
         sprintf(buffer, "HTTP/1.1 %d Not Found\r\n", status);
       
     }
-    
-    size = get_file_size(file);
-    sprintf(str, "%d", size);
-    ba = (char *)malloc(size);
-    fread(ba, size, 1, file);
-    fclose(file);
-    strcat(buffer, "Date: ");
-    strcat(buffer, as);
-    strcat(buffer, "\r\n");
-    strcat(buffer, "Server: ");
-    strcat(buffer, hostname);
-    strcat(buffer, "\r\n");
-    strcat(buffer, "Content-Length: ");
-    strcat(buffer, str);
-    strcat(buffer, "\r\n");
+    else if(status == 400)
+    {
+        sprintf(buffer, "HTTP/1.1 %d Bad Request\r\n", status);
+      
+    }
+    else if(status == 403)
+    {
+        sprintf(buffer, "HTTP/1.1 %d Forbidden\r\n", status);
+      
+    }
+    if(current_time){
+        strcat(buffer, "Date: ");
+        strcat(buffer, current_time);
+        strcat(buffer, "\r\n");
+    }
+    if(hostname){
+        strcat(buffer, "Server: ");
+        strcat(buffer, hostname);
+        strcat(buffer, "\r\n");
+    }
     strcat(buffer, "Connection: close\r\n");
-    strcat(buffer, "Content-Type: ");
-    strcat(buffer, file_type);
-    strcat(buffer, "\r\n");
+    file = fopen(filename, "rb");
+    if(file){
+        size = get_file_size(file);
+        sprintf(str, "%d", size);
+        ba = (char *)malloc(size);
+        fread(ba, size, 1, file);
+        fclose(file);
+        strcat(buffer, "Content-Length: ");
+        strcat(buffer, str);
+        strcat(buffer, "\r\n");
+        if(file_type){
+            strcat(buffer, "Content-Type: ");
+            strcat(buffer, file_type);
+            strcat(buffer, "\r\n");
+        }
+    }
     strcat(buffer, "\r\n");
     send_expr(newsockfd, buffer, strlen(buffer));
-    send_expr(newsockfd, ba, size);
-    free(ba);
-    
+    if(ba){
+        send_expr(newsockfd, ba, size);
+        free(ba);
+    }
 }
 
 
@@ -247,9 +270,6 @@ int main(void)
 	int	sockfd, newsockfd ; /* Socket descriptors */
 	int	clilen;
 	struct sockaddr_in	cli_addr, serv_addr;
-
-	int i;
-	char buf[BUFSIZE];		/* We will use this buffer for communication */
 
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
 		{perror("Cannot create socket\n");
@@ -270,7 +290,8 @@ int main(void)
 	}
 
 	listen(sockfd, 5); 
-
+    char hostname[FILE_NAME_SIZE];
+    gethostname(hostname, sizeof(hostname));
 	while (1) {
 
 		clilen = sizeof(cli_addr);
@@ -281,15 +302,18 @@ int main(void)
 			perror("Accept error\n");
 			exit(0);
 		}
-        char buffer[5*BUFSIZE],filename[256];
+        char filename[FILE_NAME_SIZE];
         int req_size = 0;
 		char *expr = recieve_expr(newsockfd, &req_size);
 		if(!expr){
-			break;
+			printf("Error in recieving the HTTP request\n");
+            return_response(400, newsockfd, hostname, NULL, "err_400.html", NULL, "text/html");
+            continue;
 		}
         request req;
         if(parse_http_request(expr, req_size,&req)){
             printf("Error in parsing the HTTP request\n");
+            return_response(400, newsockfd, hostname, NULL, "err_400.html", NULL, "text/html");
             continue;
         }
         // Print the request
@@ -303,33 +327,33 @@ int main(void)
         printf("Content type: %s\n", req.content_type);
         if(req.body_size > 0)
             printf("\n\nBody: %s\n", req.body);
-        if(strcmp(req.method,"GET")==0)
-        {
-        FILE *file, *access;
-        int status =200;
+
+
+        FILE *access;
         time_t rawtime;
         struct tm *timeinfo;
-        char as[80];
-        char date[80];
-        char t[80];
+        char current_time[TIME_BUF_SIZE];
+        char date[TIME_BUF_SIZE];
+        char t[TIME_BUF_SIZE];
 
         time(&rawtime);
         timeinfo = gmtime(&rawtime);
 
-        strftime(as, 80, "%a, %d %b %Y %T GMT", timeinfo);
+        strftime(current_time, TIME_BUF_SIZE, "%a, %d %b %Y %T GMT", timeinfo);
         
-        strftime(date, 80, "%d/%m/%y", timeinfo);
-        strftime(t, 80, "%H/%M/%S", timeinfo);
+        strftime(date, TIME_BUF_SIZE, "%d%m%y", timeinfo);
+        strftime(t, TIME_BUF_SIZE, "%H%M%S", timeinfo);
 
-
-        char input[100];
+        char input[2*BUFSIZE];
         sprintf(input, "%s:%s:%s:%d:%s:%s\n",date, t,inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port),req.method, req.url);
         printf("%s", input);
         access = fopen("AccessLog.txt", "a+");
         fprintf(access, "%s", input);
         fclose(access);
 
-       
+        if(strcmp(req.method,"GET")==0){
+        FILE *file;
+        int status =200;
         
         // struct tm gmt_time = {0};
         // strptime(str_time, "%a, %d %b %Y %T GMT", &gmt_time);
@@ -342,7 +366,7 @@ int main(void)
         // double difference_in_seconds = difftime(other_gmt_time_seconds, gmt_time_seconds);
         // printf("Difference between two GMT time objects in seconds: %f\n", difference_in_seconds);
 
-        char file_name[256];
+        char file_name[FILE_NAME_SIZE];
         char *parse_filename = strchr(req.url, '/');
         if (parse_filename == NULL) {
             strcpy(file_name,"test.txt");
@@ -354,39 +378,52 @@ int main(void)
         int result;
         struct stat st;
         struct tm *gmt;
-        char time[50];
-        char hostname[256];
-        gethostname(hostname, sizeof(hostname));
-        char file_type[256];
+        char last_modify_time[TIME_BUF_SIZE];
+        char file_type[FILE_NAME_SIZE];
 
         result = stat(file_name, &st);
         if (result == -1) {
             strcpy(file_type,"text/html");
-            return_response(404, newsockfd, hostname, as, "err_404.html", NULL, file_type);
+            return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, file_type);
         }
         else{
             gmt = gmtime(&st.st_mtime);
 
-            strftime(time, sizeof(time), "%a, %d %b %Y %T GMT", gmt);
+            strftime(last_modify_time, sizeof(last_modify_time), "%a, %d %b %Y %T GMT", gmt);
             file = fopen(file_name, "rb");
-            if(file==NULL)
-            {
-                printf("Error in opening file");
-                exit(0);
+            if(file==NULL){
+                perror("Error in opening file\n");
+                // strcpy(file_type,"text/html");
+                return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
             }
-             char str[10];
-   
-      
-            if(status==200)get_content_type(file_name,file_type);
-            return_response(status, newsockfd, hostname, as, file_name, time,file_type);
-            
+            else if(status==200){
+                get_content_type(file_name,file_type);
+                return_response(status, newsockfd, hostname, current_time, file_name, last_modify_time,file_type);
+            }
             printf("Sent!\n");
             }
             
         }
         else if(strcmp(req.method, "PUT")==0){
-                // printf("%s\n", expr);
+            int status = 200;
+            FILE *file;
+            char file_type[FILE_NAME_SIZE];
+            file = fopen((req.url)+1, "wb");
+            if(file==NULL)
+            {
+                perror("Error in opening file\n");
+                // strcpy(file_type,"text/html");
+                return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
             }
+            else{
+                if(fwrite(req.body, 1, req.body_size, file)!=req.body_size){
+                    perror("Error in writing to file\n");
+                    status = 500;
+                }
+                fclose(file);
+                return_response(status, newsockfd, hostname, current_time, NULL, NULL,NULL);
+            }
+        }
         // Deallocate the request
         if(req.body_size > 0)
             free(req.body);

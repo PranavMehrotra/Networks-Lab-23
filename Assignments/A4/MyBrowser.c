@@ -256,9 +256,7 @@ int main() {
             struct tm *tm = gmtime(&now);
             char cs[100];
             strftime(cs, sizeof(cs), "%a, %d %b %Y %H:%M:%S GMT", tm);
-            printf("%s\n", cs);
-
-            printf("%s\n", cs);
+            // printf("%s\n", cs);
             /* Construct HTTP GET request */
             sprintf(buffer, "GET %s HTTP/1.1\r\n", url);
             strcat(buffer, "Host: ");
@@ -332,17 +330,11 @@ int main() {
             printf("%s\n", url);
             char content_type[20];
             get_content_type(filename, content_type);
-            /* Construct HTTP PUT request */
-            sprintf(buffer, "PUT %s HTTP/1.1\r\n", url);
-            strcat(buffer, "Host: ");
-            strcat(buffer, hostname);
-            strcat(buffer, "\r\n");
-            strcat(buffer, "Content-Type: ");
-            strcat(buffer, content_type);
-            strcat(buffer, "\r\n\r\n");
+            char file_path[2*BUFSIZE];
+            strcpy(file_path,url);
+            strcat(file_path,filename);
 
             char str[10];
-        
             FILE *file;
             int result;
             struct stat st;
@@ -366,6 +358,16 @@ int main() {
             int x = fread(ba, size, 1, file);
             
             fclose(file);
+            /* Construct HTTP PUT request */
+            sprintf(buffer, "PUT %s HTTP/1.1\r\n", file_path);
+            strcat(buffer, "Host: ");
+            strcat(buffer, hostname);
+            strcat(buffer, "\r\n");
+            strcat(buffer, "Content-Type: ");
+            strcat(buffer, content_type);
+            strcat(buffer, "Content-Length: ");
+            strcat(buffer, str);
+            strcat(buffer, "\r\n\r\n");
 
             printf("%s\n", buffer);
             
@@ -373,6 +375,7 @@ int main() {
             send_expr(sockfd, ba, size);
             if(strcasecmp(hostname,"0.0.0.0")==0 || strcasecmp(hostname,"localhost")==0)
                 send_expr(sockfd, "\r\n\r\n\r\n", 6);
+            free(ba);
             printf("Sent!\n");
             int resp_len;
             char *s = recieve_expr(sockfd,&resp_len);
