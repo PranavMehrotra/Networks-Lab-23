@@ -130,7 +130,7 @@ int parse_http_response(char *resp, int response_len, response *parsed_response)
         if(header_line==NULL) break;
     }
     // Parse the first line to get the HTTP status code
-    if (sscanf(header_lines[0], "HTTP/1.1 %d %s",&(parsed_response->status_code),parsed_response->status_message) < 1) {
+    if (sscanf(header_lines[0], "HTTP/1.1 %d %s",&(parsed_response->status_code),parsed_response->status_message)!=2) {
         // Handle error: first line not in correct format
         free(headers);
         return 1;
@@ -293,19 +293,37 @@ int main() {
             // }
             // printf("\r\nContent-Type: %s\r\n", resp.content_type);
             // printf("%d\n\n", resp.body_size);
+            if(resp.status_code==200){
+                if(strlen(resp.content_type)>0){
+                    FILE *fp;
+                    char *file_name = malloc(strlen(resp.content_type) + strlen(filename) + 2);
+                
+                    strcpy(file_name, filename);
+                    strcat(file_name, ".");
+                    strcat(file_name, resp.content_type);
+                    printf("%s\n", file_name);
+                    fp = fopen(file_name, "w");
+                    fwrite(resp.body, sizeof(char), resp.body_size, fp);
+                    fclose(fp);
 
-            FILE *fp;
-            char *file_name = malloc(strlen(resp.content_type) + strlen(filename) + 2);
-         
-            strcpy(file_name, filename);
-            strcat(file_name, ".");
-            strcat(file_name, resp.content_type);
-            printf("%s\n", file_name);
-            // printf("%s\n", filename);
-            fp = fopen(file_name, "w");
-            fwrite(resp.body, sizeof(char), resp.body_size, fp);
-            fclose(fp);
-
+                    int pid = fork();
+                    if(pid==0){
+                        char *args[] = {"xdg-open", file_name, NULL};
+                        freopen("/dev/null", "w", stdout);
+                        freopen("/dev/null", "w", stderr);
+                        execvp(args[0], args);
+                        perror("xdg-open");
+                        exit(0);
+                    }
+                    free(file_name);
+                }
+            }
+            else if(resp.status_code==400 || resp.status_code==403 || resp.status_code==404){
+                printf("Error: %d %s\n", resp.status_code, resp.status_message);
+            }
+            else{
+                printf("Unknown Error: %d\n", resp.status_code);
+            }
             // Deallocate Response memory
             free(resp.body);
             for(int i=1;i<resp.num_headers;i++){
@@ -313,17 +331,6 @@ int main() {
                 free(resp.headers[i].value);
             }
             free(resp.headers);
-
-            int pid = fork();
-            if(pid==0){
-                char *args[] = {"xdg-open", file_name, NULL};
-                freopen("/dev/null", "w", stdout);
-                freopen("/dev/null", "w", stderr);
-                execvp(args[0], args);
-                perror("xdg-open");
-                exit(0);
-            }
-            free(file_name);
         }
         else if(strcasecmp(command,"PUT")==0){
             // printf("%s\n", url);
@@ -368,8 +375,6 @@ int main() {
             strcat(buffer, "Content-Length: ");
             strcat(buffer, str);
             strcat(buffer, "\r\n\r\n");
-
-            // printf("%s\n", buffer);
             
             send_expr(sockfd, buffer, strlen(buffer));
             send_expr(sockfd, ba, size);
@@ -387,8 +392,16 @@ int main() {
             char *status = strtok(s, " ");
             status = strtok(NULL, " ");
             char *status_message = strtok(NULL, "\r\n");
-            printf("%s %s\n", status, status_message);
-            // printf("%s\n", s);
+            int status_code = atoi(status);
+            if(status_code==200){
+                printf("File uploaded successfully\n");
+            }
+            else if(status_code==400 || status_code==403 || status_code==404){
+                printf("Error: %d %s\n", status_code, status_message);
+            }
+            else{
+                printf("Unknown Error: %d\n", status_code);
+            }
             free(s);
             close(sockfd);
         }

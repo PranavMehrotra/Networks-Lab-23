@@ -226,6 +226,19 @@ void return_response(int status, int newsockfd, const char *hostname, const char
         sprintf(buffer, "HTTP/1.1 %d Forbidden\r\n", status);
       
     }
+    else if(status == 304)
+    {
+        sprintf(buffer, "HTTP/1.1 %d Not Modified\r\n", status);
+      
+    }
+    else if(status == 500)
+    {
+        sprintf(buffer, "HTTP/1.1 %d Internal Server Error\r\n", status);
+      
+    }
+    else{
+        sprintf(buffer, "HTTP/1.1 %d Unknown Error\r\n", status);
+    }
     if(current_time){
         strcat(buffer, "Date: ");
         strcat(buffer, current_time);
@@ -392,16 +405,52 @@ int main(void)
             gmt = gmtime(&st.st_mtime);
 
             strftime(last_modify_time, sizeof(last_modify_time), "%a, %d %b %Y %T GMT", gmt);
-            file = fopen(file_name, "rb");
-            if(file==NULL){
-                perror("Error in opening file");
-                // strcpy(file_type,"text/html");
-                return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
+            
+
+            struct tm is_modified = {0};
+            for (int i = 1; i < req.num_headers; i++) {
+                if(strcmp(req.headers[i].name, "If-Modified-Since")==0)
+                {
+                    char month[5];
+                    sscanf(req.headers[i].value, "%*3s, %d %3s %d %d:%d:%d GMT", &is_modified.tm_mday, month, &is_modified.tm_year, &is_modified.tm_hour, &is_modified.tm_min, &is_modified.tm_sec);
+                    is_modified.tm_year -= 1900;
+                    if (strcmp(month, "Jan") == 0) is_modified.tm_mon = 0;
+                    else if (strcmp(month, "Feb") == 0) is_modified.tm_mon = 1;
+                    else if (strcmp(month, "Mar") == 0) is_modified.tm_mon = 2;
+                    else if (strcmp(month, "Apr") == 0) is_modified.tm_mon = 3;
+                    else if (strcmp(month, "May") == 0) is_modified.tm_mon = 4;
+                    else if (strcmp(month, "Jun") == 0) is_modified.tm_mon = 5;
+                    else if (strcmp(month, "Jul") == 0) is_modified.tm_mon = 6;
+                    else if (strcmp(month, "Aug") == 0) is_modified.tm_mon = 7;
+                    else if (strcmp(month, "Sep") == 0) is_modified.tm_mon = 8;
+                    else if (strcmp(month, "Oct") == 0) is_modified.tm_mon = 9;
+                    else if (strcmp(month, "Nov") == 0) is_modified.tm_mon = 10;
+                    else if (strcmp(month, "Dec") == 0) is_modified.tm_mon = 11;
+                    else is_modified.tm_mon = -1;
+                }
             }
-            else if(status==200){
-                get_content_type(file_name,file_type);
-                return_response(status, newsockfd, hostname, current_time, file_name, last_modify_time,file_type);
+            
+        
+            time_t last_modify_seconds = mktime(gmt);
+            time_t is_modified_seconds = mktime(&is_modified);
+            double difference_in_seconds = difftime(last_modify_seconds, is_modified_seconds);
+            // printf("Difference between two GMT time objects in seconds: %f\n", difference_in_seconds);
+            if(difference_in_seconds<0){
+                status = 304;
+                return_response(status, newsockfd, hostname, current_time, NULL, NULL, NULL);
             }
+            else{
+                file = fopen(file_name, "rb");
+                if(file==NULL){
+                    perror("Error in opening file");
+                    // strcpy(file_type,"text/html");
+                    return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
+                }
+                else if(status==200){
+                    get_content_type(file_name,file_type);
+                    return_response(status, newsockfd, hostname, current_time, file_name, last_modify_time,file_type);
+                }
+                }
             }
             
         }
