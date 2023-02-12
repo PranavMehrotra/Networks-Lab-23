@@ -126,7 +126,7 @@ int main(void)
 			exit(0);
 		}
 		while(1){
-        char command[20],url[BUFSIZE],buffer[5*BUFSIZE],filename[256];
+        char command[20],buffer[5*BUFSIZE],filename[256];
 		int length = 0;
 		char *expr = recieve_expr(newsockfd, &length);
 		if(!expr){
@@ -154,6 +154,18 @@ int main(void)
 
         strftime(as, 80, "%a, %d %b %Y %T GMT", timeinfo);
        
+        
+        // struct tm gmt_time = {0};
+        // strptime(str_time, "%a, %d %b %Y %T GMT", &gmt_time);
+
+        // // Calculate difference between two GMT time objects
+        // struct tm other_gmt_time = {0};
+        // strptime("Sun, 12 Feb 2023 19:33:35 GMT", "%a, %d %b %Y %T GMT", &other_gmt_time);
+        // time_t gmt_time_seconds = mktime(&gmt_time);
+        // time_t other_gmt_time_seconds = mktime(&other_gmt_time);
+        // double difference_in_seconds = difftime(other_gmt_time_seconds, gmt_time_seconds);
+        // printf("Difference between two GMT time objects in seconds: %f\n", difference_in_seconds);
+
         char file_name[256];
         char *parse_filename = strrchr(url, '/');
         if (parse_filename == NULL) {
@@ -187,10 +199,7 @@ int main(void)
         int a;
         char str[10];
        
-        
-        // fseek(file, 0, SEEK_END);
-        // int size = ftell(file);
-        // rewind(file);
+
         int size = get_file_size(file);
         char *ba = (char *)malloc(size);
         sprintf(str, "%d", size);
@@ -250,7 +259,11 @@ int main(void)
         send_expr(newsockfd, ba, size);
         printf("Sent!\n");
         }
-		close(newsockfd);
+		else if(strcmp(method, "PUT")==0){
+            printf("%s\n", expr);
+        }
+        
+        close(newsockfd);
 		}
 	}
 	return 0;

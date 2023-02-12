@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <ctype.h>
+#include <sys/stat.h>
 
 #define BUFSIZE 1024
 #define MAX_SIZE 500
@@ -75,6 +76,12 @@ void send_expr(int newsockfd, char *expr, int size){
 	}
 }
 
+long get_file_size(FILE *file) {
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    rewind(file);
+    return size;
+}
 
 int parse_http_response(char *resp, int response_len, response *parsed_response) {
     // Initialize the response struct
@@ -257,12 +264,12 @@ int main() {
             // printf("%d\n\n", resp.body_size);
 
             FILE *fp;
-            char *file_name = malloc(strlen(resp.content_type) + strlen(filename) + 2);
-            strcpy(file_name, filename);
-            strcat(file_name, ".");
-            strcat(file_name, resp.content_type);
-            // printf("%s\n", file_name);
-            fp = fopen(file_name, "w");
+            char *filename = malloc(strlen(resp.content_type) + strlen(filename) + 2);
+            strcpy(filename, filename);
+            strcat(filename, ".");
+            strcat(filename, resp.content_type);
+            // printf("%s\n", filename);
+            fp = fopen(filename, "w");
             fwrite(resp.body, sizeof(char), resp.body_size, fp);
             fclose(fp);
 
@@ -276,21 +283,59 @@ int main() {
 
             int pid = fork();
             if(pid==0){
-                char *args[] = {"xdg-open", file_name, NULL};
+                char *args[] = {"xdg-open", filename, NULL};
                 freopen("/dev/null", "w", stdout);
                 freopen("/dev/null", "w", stderr);
                 execvp(args[0], args);
                 perror("xdg-open");
                 exit(0);
             }
-            free(file_name);
+            free(filename);
         }
         else if(strcasecmp(command,"PUT")==0){
+            printf("hello\n");
+            printf("%s\n", url);
             /* Construct HTTP PUT request */
             sprintf(buffer, "PUT %s HTTP/1.1\r\n", url);
             strcat(buffer, "Host: ");
             strcat(buffer, hostname);
             strcat(buffer, "\r\n");
+            strcat(buffer, "\r\n");
+        
+            int a;
+            char str[10];
+        
+            FILE *file;
+            int result;
+             struct stat st;
+            result = stat(filename, &st);
+            if (result == -1) {
+                printf("error\n");
+                file = fopen("err_404.html", "rb");
+                
+                
+            }
+            else{
+                printf("--%s\n", filename);
+                file = fopen(filename, "rb");
+            }
+            int size = get_file_size(file);
+            printf("%d\n", size);
+            char *ba = (char *)malloc(size* sizeof(char));
+            sprintf(str, "%d", size);
+            size_t x = fread(ba, size, 1, file);
+            // printf("**%lu\n", x);
+            // printf("%s\n", ba);
+            
+            fclose(file);
+
+            printf("%s\n", buffer);
+            
+            send_expr(sockfd, buffer, strlen(buffer));
+            send_expr(sockfd, ba, size);
+            send_expr(sockfd, "\r\n\r\n\r\n", strlen("\r\n\r\n\r\n"));
+            printf("Sent!\n");
+
 
         }
         else{
