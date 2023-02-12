@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include <ctype.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #define BUFSIZE 1024
 #define MAX_SIZE 500
@@ -163,6 +164,7 @@ int main() {
     char command[20],url[BUFSIZE],buffer[3*BUFSIZE],filename[256];
     char *parse_filename;
     while(1){
+        
         printf("MyOwnBrowser> ");
         scanf("%s",command);
         if(strcasecmp(command,"QUIT")==0)   break;
@@ -228,10 +230,23 @@ int main() {
                     filename[filetype - parse_filename] = '\0';
                 }
             }
+
+                time_t now = time(NULL);
+            now -= 2 * 24 * 60 * 60;  // subtract 2 days
+
+            struct tm *tm = gmtime(&now);
+            char cs[100];
+            strftime(cs, sizeof(cs), "%a, %d %b %Y %H:%M:%S GMT", tm);
+            printf("%s\n", cs);
+
+            printf("%s\n", cs);
             /* Construct HTTP GET request */
             sprintf(buffer, "GET %s HTTP/1.1\r\n", url);
             strcat(buffer, "Host: ");
             strcat(buffer, hostname);
+            strcat(buffer, "If-Modified-Since: ");
+            strcat(buffer, "\r\n");
+            strcat(buffer, "02");
             strcat(buffer, "\r\n");
             strcat(buffer, "Accept: */*\r\n");
             strcat(buffer, "Connection: close\r\n");
