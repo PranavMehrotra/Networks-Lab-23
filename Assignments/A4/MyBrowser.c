@@ -310,7 +310,6 @@ int main() {
             free(file_name);
         }
         else if(strcasecmp(command,"PUT")==0){
-            printf("hello\n");
             printf("%s\n", url);
             /* Construct HTTP PUT request */
             sprintf(buffer, "PUT %s HTTP/1.1\r\n", url);
@@ -319,7 +318,6 @@ int main() {
             strcat(buffer, "\r\n");
             strcat(buffer, "\r\n");
         
-            int a;
             char str[10];
         
             FILE *file;
@@ -327,22 +325,22 @@ int main() {
             struct stat st;
             result = stat(filename, &st);
             if (result == -1) {
-                printf("error\n");
-                file = fopen("err_404.html", "rb");
-                
-                
+                perror("Error");
+                continue;
             }
             else{
                 printf("--%s\n", filename);
                 file = fopen(filename, "rb");
+                if (file == NULL) {
+                    perror("Error");
+                    continue;
+                }
             }
             int size = get_file_size(file);
             printf("%d\n", size);
             char *ba = (char *)malloc(size* sizeof(char));
             sprintf(str, "%d", size);
             size_t x = fread(ba, size, 1, file);
-            // printf("**%lu\n", x);
-            // printf("%s\n", ba);
             
             fclose(file);
 
@@ -350,10 +348,18 @@ int main() {
             
             send_expr(sockfd, buffer, strlen(buffer));
             send_expr(sockfd, ba, size);
-            send_expr(sockfd, "\r\n\r\n\r\n", strlen("\r\n\r\n\r\n"));
+            // send_expr(sockfd, "\r\n\r\n\r\n", 6);
             printf("Sent!\n");
-
-
+            int resp_len;
+            char *s = recieve_expr(sockfd,&resp_len);
+            if(s==NULL || resp_len==0){
+                printf("No Response\n");
+                continue;
+            }
+            printf("Response received\n");
+            close(sockfd);
+            printf("%s\n", s);
+            printf("\t\tHelll\n");
         }
         else{
             printf("Invalid Command\n");

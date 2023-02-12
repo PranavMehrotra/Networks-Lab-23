@@ -67,13 +67,13 @@ char *recieve_expr(int newsockfd, int *recv_size){
 void send_expr(int newsockfd, char *expr, int size){
 	int len=0,y,chunk=MAX_SIZE;
 	if(size<chunk){
-		send(newsockfd,expr,size+1,0);
+		send(newsockfd,expr,size,0);
 		return;
 	}
 	while(1){
 		if(len+chunk>size){
             
-			send(newsockfd,expr+len,size-len+1,0);
+			send(newsockfd,expr+len,size-len,0);
 			break;
 		}
 		y=send(newsockfd,expr+len,chunk,0);
@@ -185,6 +185,11 @@ int main(void)
         if (result == -1) {
             
             file = fopen("err_404.html", "rb");
+            if(file==NULL)
+            {
+                printf("Error in opening file");
+                exit(0);
+            }
             status=404;
             
         }
@@ -193,8 +198,12 @@ int main(void)
 
         strftime(time, sizeof(time), "%a, %d %b %Y %T GMT", gmt);
         file = fopen(file_name, "rb");
+        if(file==NULL)
+        {
+            printf("Error in opening file");
+            exit(0);
         }
-    
+        }
         char hostname[256];
         int a;
         char str[10];
