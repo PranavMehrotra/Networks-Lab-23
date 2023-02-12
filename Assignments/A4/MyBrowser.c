@@ -83,6 +83,23 @@ long get_file_size(FILE *file) {
     rewind(file);
     return size;
 }
+void get_content_type(const char *file_name, char *file) {
+    const char *extension = strrchr(file_name, '.');
+    extension++;
+
+    if (strcmp(extension, "html") == 0) {
+        strcpy(file,"text/html; charset=UTF-8");
+    } else if (strcmp(extension, "pdf") == 0) {
+        strcpy(file,"application/pdf");
+    } 
+    else if (strcmp(extension, "jpeg") == 0) {
+        strcpy(file,"image/jpeg");
+    }
+    else {
+        strcpy(file,"application/");
+        strcat(file,extension);
+    } 
+}
 
 int parse_http_response(char *resp, int response_len, response *parsed_response) {
     // Initialize the response struct
@@ -93,11 +110,11 @@ int parse_http_response(char *resp, int response_len, response *parsed_response)
         // Handle error: no header end found
         return 1;
     }
-    size_t header_len = header_end - resp + 4;
+    int header_len = header_end - resp + 4;
     char *headers = (char *)malloc((header_len + 1)*sizeof(char));
     strncpy(headers, resp, header_len);
     headers[header_len] = '\0';
-    size_t body_len = response_len - header_len;
+    int body_len = response_len - header_len;
     parsed_response->body = (char *)malloc(body_len*sizeof(char));
     memcpy(parsed_response->body, resp + header_len, body_len);
     parsed_response->body_size = body_len;
@@ -177,14 +194,16 @@ int main() {
         // Parse the URL string to extract the hostname (domain name)
         if (sscanf(url, "http://%1000[^:]:%d", hostname, &portno) == 2) {
             // Port is specified in the URL
-            sscanf(url, "http://%255[^/:]", hostname);
             char temp_url[BUFSIZE];
-            sscanf(url, "http://%1000[^:]", temp_url);
-            strcpy(url,"http://");
-            strcat(url,temp_url);
+            sscanf(url, "http://%255[^/:]%1000[^:]", hostname,temp_url);
+            strcpy(url,temp_url);
             // printf("URL: %s\n Port: %d \n Host: %s\n",url,portno,hostname);
-        } else if (sscanf(url, "http://%255[^/]", hostname) == 1) {
+        } else if (sscanf(url, "http://%1000[^/]", hostname) == 1) {
             // Port is not specified, use the default
+            char temp_url[BUFSIZE];
+            sscanf(url, "http://%255[^/:]%1000[^:]", hostname,temp_url);
+            strcpy(url,temp_url);
+            // printf("URL: %s\n Host: %s\n",url,hostname);
         } else {
             // URL format is invalid
             printf("Please enter a valid HTTP URL\n");
@@ -244,9 +263,6 @@ int main() {
             sprintf(buffer, "GET %s HTTP/1.1\r\n", url);
             strcat(buffer, "Host: ");
             strcat(buffer, hostname);
-            strcat(buffer, "If-Modified-Since: ");
-            strcat(buffer, "\r\n");
-            strcat(buffer, "02");
             strcat(buffer, "\r\n");
             strcat(buffer, "Accept: */*\r\n");
             strcat(buffer, "Connection: close\r\n");
@@ -311,13 +327,17 @@ int main() {
         }
         else if(strcasecmp(command,"PUT")==0){
             printf("%s\n", url);
+            char content_type[20];
+            get_content_type(filename, content_type);
             /* Construct HTTP PUT request */
             sprintf(buffer, "PUT %s HTTP/1.1\r\n", url);
             strcat(buffer, "Host: ");
             strcat(buffer, hostname);
             strcat(buffer, "\r\n");
-            strcat(buffer, "\r\n");
-        
+            strcat(buffer, "Content-Type: ");
+            strcat(buffer, content_type);
+            strcat(buffer, "\r\n\r\n");
+
             char str[10];
         
             FILE *file;
@@ -340,7 +360,7 @@ int main() {
             printf("%d\n", size);
             char *ba = (char *)malloc(size* sizeof(char));
             sprintf(str, "%d", size);
-            size_t x = fread(ba, size, 1, file);
+            int x = fread(ba, size, 1, file);
             
             fclose(file);
 
@@ -348,7 +368,8 @@ int main() {
             
             send_expr(sockfd, buffer, strlen(buffer));
             send_expr(sockfd, ba, size);
-            // send_expr(sockfd, "\r\n\r\n\r\n", 6);
+            if(strcasecmp(hostname,"0.0.0.0")==0 || strcasecmp(hostname,"localhost")==0)
+                send_expr(sockfd, "\r\n\r\n\r\n", 6);
             printf("Sent!\n");
             int resp_len;
             char *s = recieve_expr(sockfd,&resp_len);

@@ -12,26 +12,48 @@
 #define MAX_SIZE 500
 #define BUFSIZE 1024
 
+typedef struct{
+    char *name;
+    char *value;
+}header;
 
-char *get_content_type(const char *file_name) {
+typedef struct{
+    char method[7];
+    char url[BUFSIZE];
+    header *headers;
+    int num_headers;
+    char *body;
+    int body_size;
+    char content_type[30];
+}request;
+
+typedef struct{
+    int status_code;
+    char status_message[30];
+    header *headers;
+    int num_headers;
+    char *body;
+    int body_size;
+    char content_type[30];
+}response;
+
+
+
+void get_content_type(const char *file_name, char *file) {
     const char *extension = strrchr(file_name, '.');
     extension++;
-    char *file = (char*)malloc(1000*sizeof(char));
-    printf("%s\n", extension);
 
     if (strcmp(extension, "html") == 0) {
-        return "text/html; charset=UTF-8";
+        strcpy(file,"text/html; charset=UTF-8");
     } else if (strcmp(extension, "pdf") == 0) {
-        return "application/pdf";
+        strcpy(file,"application/pdf");
     } 
     else if (strcmp(extension, "jpeg") == 0) {
-        return "image/jpeg";
+        strcpy(file,"image/jpeg");
     }
     else {
-        strcat(file,"application/");
+        strcpy(file,"application/");
         strcat(file,extension);
-        printf("%s\n",file);
-        return file;
     } 
 }
 
@@ -81,6 +103,93 @@ void send_expr(int newsockfd, char *expr, int size){
 	}
 }
 
+int parse_http_request(char *req, int request_len, request *parsed_request) {
+    // Initialize the request struct
+    memset(parsed_request, 0, sizeof(request));
+    // Split the request into headers and body
+    const char *header_end = strstr(req, "\r\n\r\n");
+    if (header_end == NULL) {
+        // Handle error: no header end found
+        return 1;
+    }
+    int header_len = header_end - req + 4;
+    char *headers = (char *)malloc((header_len + 1)*sizeof(char));
+    strncpy(headers, req, header_len);
+    headers[header_len] = '\0';
+    int body_len = request_len - header_len;
+    parsed_request->body = (char *)malloc(body_len*sizeof(char));
+    memcpy(parsed_request->body, req + header_len, body_len);
+    parsed_request->body_size = body_len;
+    free(req);
+    // printf("Headers: %s\n", headers);
+    // Split the headers into individual lines
+    char *header_lines[32];
+    int num_header_lines = 0;
+    char *header_line = strtok(headers, "\r\n");
+    while (header_line != NULL && num_header_lines < 32) {
+        header_lines[num_header_lines++] = header_line;
+        header_line = strtok(NULL, "\r\n");
+        if(header_line==NULL) break;
+    }
+    // Parse the first line to get the HTTP status code
+    if (sscanf(header_lines[0], "%6s %s HTTP/1.1",parsed_request->method,parsed_request->url) != 2) {
+        // Handle error: first line not in correct format
+        free(headers);
+        return 1;
+    }
+    else{
+        char temp_url[BUFSIZE];
+        if(sscanf(parsed_request->url,"http://%s",temp_url)==1){
+            strcpy(parsed_request->url,temp_url);
+        }
+    }
+
+    if(strcmp(parsed_request->method,"GET")==0){
+        if(parsed_request->body)
+            free(parsed_request->body);
+        parsed_request->body_size = 0;
+    }
+
+    // Allocate memory for the headers array
+    parsed_request->headers = (header *)malloc(num_header_lines * sizeof(header));
+    parsed_request->num_headers = num_header_lines;
+
+    // Parse each header line into name and value
+    for (int i = 1; i < num_header_lines; i++) {
+        header *current_header = &parsed_request->headers[i];
+        current_header->name = strtok(header_lines[i], ":");
+        current_header->value = current_header->name + strlen(current_header->name) + 1;
+        while (current_header->value[0] == ' ') current_header->value++;
+        current_header->name = strdup(current_header->name);
+        current_header->value = strdup(current_header->value);
+        if(strcasecmp(current_header->name,"Content-Length")==0){
+            parsed_request->body_size = atoi(current_header->value);
+            if(parsed_request->body_size > 0 && strcmp(parsed_request->method,"GET")!=0){
+                if(parsed_request->body)
+                    parsed_request->body = (char *)realloc(parsed_request->body, parsed_request->body_size);
+            }
+        }
+        else if(strcasecmp(current_header->name,"Content-Type")==0){
+            // Parse the content_type to get the content type, with delimeter '/'
+            char *content_type = strstr(current_header->value, "/");
+            content_type++;
+            // Take until ';'
+            char* content_type_end = strstr(content_type, ";");
+            if(content_type_end == NULL){
+                // Take until '\r\n'
+                content_type_end = content_type + strlen(content_type);
+            }
+            strncpy(parsed_request->content_type, content_type, content_type_end - content_type);
+            parsed_request->content_type[content_type_end - content_type] = '\0';
+        }
+    }
+
+    // Clean up
+    free(headers);
+    return 0;
+}
+
+
 
 int main(void)
 {	
@@ -118,30 +227,35 @@ int main(void)
 
 		clilen = sizeof(cli_addr);
 		newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
-					&clilen) ;
-		printf("accepted\n");
+					&clilen);
 
 		if (newsockfd < 0) {
 			perror("Accept error\n");
 			exit(0);
 		}
-		while(1){
-        char command[20],buffer[5*BUFSIZE],filename[256];
-		int length = 0;
-		char *expr = recieve_expr(newsockfd, &length);
+        char buffer[5*BUFSIZE],filename[256];
+        int req_size = 0;
+		char *expr = recieve_expr(newsockfd, &req_size);
 		if(!expr){
 			break;
 		}
-        char *first_line_end = strstr(expr, "\r\n");
-        char *first_line = malloc(first_line_end - expr + 1);
-        strncpy(first_line, expr, first_line_end - expr);
-        first_line[first_line_end - expr] = '\0';
-        char method[10], url[256], version[10];
-        sscanf(first_line, "%s %s %s", method, url, version);
-        printf("%s %s %s\n", method, url, version);
-        free(first_line);
-		// printf("\n%s", expr);
-        if(strcmp(method,"GET")==0)
+        request req;
+        if(parse_http_request(expr, req_size,&req)){
+            printf("Error in parsing the HTTP request\n");
+            continue;
+        }
+        // Print the request
+        printf("Method: %s\n", req.method);
+        printf("URL: %s\n", req.url);
+        printf("Body size: %d\n", req.body_size);
+        printf("Number of headers: %d\n", req.num_headers);
+        for (int i = 1; i < req.num_headers; i++) {
+            printf("Header %d: %s: %s\n", i, req.headers[i].name, req.headers[i].value);
+        }
+        printf("Content type: %s\n", req.content_type);
+        if(req.body_size > 0)
+            printf("\n\nBody: %s\n", req.body);
+        if(strcmp(req.method,"GET")==0)
         {
         FILE *file;
         int status =200;
@@ -167,7 +281,7 @@ int main(void)
         // printf("Difference between two GMT time objects in seconds: %f\n", difference_in_seconds);
 
         char file_name[256];
-        char *parse_filename = strrchr(url, '/');
+        char *parse_filename = strchr(req.url, '/');
         if (parse_filename == NULL) {
             strcpy(file_name,"test.txt");
         }
@@ -175,7 +289,6 @@ int main(void)
             parse_filename++;
             strcpy(file_name, parse_filename);
         }
-        printf("\n\t\t%s\n\n\n\n", file_name);
         int result;
         struct stat st;
         struct tm *gmt;
@@ -205,7 +318,6 @@ int main(void)
         }
         }
         char hostname[256];
-        int a;
         char str[10];
        
 
@@ -221,8 +333,13 @@ int main(void)
     // fprintf(out, "Content-Type: %s\r\n", mime_type);
     // fprintf(out, "Content-Length: %ld\r\n", size);
     // fprintf(out, "\r\n");
-    
-        a = gethostname(hostname, sizeof(hostname));
+        char file_type[256];
+        if(status==200)
+            get_content_type(file_name,file_type);
+        else{
+            strcpy(file_type,"text/html");
+        }
+        gethostname(hostname, sizeof(hostname));
         if(status==200){
         sprintf(buffer, "HTTP/1.1 %d OK\r\n", status);
         strcat(buffer, "Date: ");
@@ -239,7 +356,7 @@ int main(void)
         strcat(buffer, "\r\n");
         strcat(buffer, "Connection: close\r\n");
         strcat(buffer, "Content-Type: ");
-        strcat(buffer, get_content_type(file_name));
+        strcat(buffer, file_type);
         strcat(buffer, "\r\n");
         strcat(buffer, "\r\n");
         // strcat(buffer,ba);
@@ -257,7 +374,7 @@ int main(void)
         strcat(buffer, "\r\n");
         strcat(buffer, "Connection: close\r\n");
         strcat(buffer, "Content-Type: ");
-        strcat(buffer, get_content_type("err_404.html"));
+        strcat(buffer, file_type);
         strcat(buffer, "\r\n");
         strcat(buffer, "\r\n");
         // strcat(buffer,ba);
@@ -266,14 +383,21 @@ int main(void)
         printf("%s\n", buffer);
         send_expr(newsockfd, buffer, strlen(buffer));
         send_expr(newsockfd, ba, size);
+        free(ba);
         printf("Sent!\n");
         }
-		else if(strcmp(method, "PUT")==0){
-            printf("%s\n", expr);
+		else if(strcmp(req.method, "PUT")==0){
+            // printf("%s\n", expr);
         }
-        
+        // Deallocate the request
+        if(req.body_size > 0)
+            free(req.body);
+        for (int i = 1; i < req.num_headers; i++) {
+            free(req.headers[i].name);
+            free(req.headers[i].value);
+        }
+        free(req.headers);
         close(newsockfd);
-		}
 	}
 	return 0;
 }
