@@ -56,6 +56,9 @@ void get_content_type(const char *file_name, char *file) {
     else if (strcmp(extension, "jpeg") == 0) {
         strcpy(file,"image/jpeg");
     }
+    else if(strcmp(extension,"txt")==0){
+        strcpy(file,"text/plain");
+    }
     else {
         strcpy(file,"application/");
         strcat(file,extension);
