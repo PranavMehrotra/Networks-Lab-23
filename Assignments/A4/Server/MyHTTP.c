@@ -305,16 +305,30 @@ int main(void)
             printf("\n\nBody: %s\n", req.body);
         if(strcmp(req.method,"GET")==0)
         {
-        FILE *file;
+        FILE *file, *access;
         int status =200;
         time_t rawtime;
         struct tm *timeinfo;
         char as[80];
+        char date[80];
+        char t[80];
 
         time(&rawtime);
         timeinfo = gmtime(&rawtime);
 
         strftime(as, 80, "%a, %d %b %Y %T GMT", timeinfo);
+        
+        strftime(date, 80, "%d/%m/%y", timeinfo);
+        strftime(t, 80, "%H/%M/%S", timeinfo);
+
+
+        char input[100];
+        sprintf(input, "%s:%s:%s:%d:%s:%s\n",date, t,inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port),req.method, req.url);
+        printf("%s", input);
+        access = fopen("AccessLog.txt", "a+");
+        fprintf(access, "%s", input);
+        fclose(access);
+
        
         
         // struct tm gmt_time = {0};
