@@ -250,7 +250,7 @@ int main() {
                 }
             }
 
-                time_t now = time(NULL);
+            time_t now = time(NULL);
             now -= 2 * 24 * 60 * 60;  // subtract 2 days
 
             struct tm *tm = gmtime(&now);
@@ -263,6 +263,9 @@ int main() {
             sprintf(buffer, "GET %s HTTP/1.1\r\n", url);
             strcat(buffer, "Host: ");
             strcat(buffer, hostname);
+            strcat(buffer, "\r\n");
+            strcat(buffer, "If-Modified-Since: ");
+            strcat(buffer, cs);
             strcat(buffer, "\r\n");
             strcat(buffer, "Accept: */*\r\n");
             strcat(buffer, "Connection: close\r\n");

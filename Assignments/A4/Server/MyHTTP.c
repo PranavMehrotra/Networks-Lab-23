@@ -189,6 +189,54 @@ int parse_http_request(char *req, int request_len, request *parsed_request) {
     return 0;
 }
 
+void return_response(int status, int newsockfd, char *hostname, char *as, char *filename, char* time, char* file_type)
+{   
+    FILE *file;
+    
+    char str[10]; int size;
+    char buffer[5*BUFSIZE];
+    char *ba;
+    file = fopen(filename, "rb");
+
+    if(status==200){
+        sprintf(buffer, "HTTP/1.1 %d OK\r\n", status);
+        
+        
+        strcat(buffer, "Last-Modified: ");
+        strcat(buffer,time);
+        strcat(buffer, "\r\n");
+        
+    }
+    if(status == 404)
+    {
+        sprintf(buffer, "HTTP/1.1 %d Not Found\r\n", status);
+      
+    }
+    
+    size = get_file_size(file);
+    sprintf(str, "%d", size);
+    ba = (char *)malloc(size);
+    fread(ba, size, 1, file);
+    fclose(file);
+    strcat(buffer, "Date: ");
+    strcat(buffer, as);
+    strcat(buffer, "\r\n");
+    strcat(buffer, "Server: ");
+    strcat(buffer, hostname);
+    strcat(buffer, "\r\n");
+    strcat(buffer, "Content-Length: ");
+    strcat(buffer, str);
+    strcat(buffer, "\r\n");
+    strcat(buffer, "Connection: close\r\n");
+    strcat(buffer, "Content-Type: ");
+    strcat(buffer, file_type);
+    strcat(buffer, "\r\n");
+    strcat(buffer, "\r\n");
+    send_expr(newsockfd, buffer, strlen(buffer));
+    send_expr(newsockfd, ba, size);
+    free(ba);
+    
+}
 
 
 int main(void)
@@ -293,102 +341,38 @@ int main(void)
         struct stat st;
         struct tm *gmt;
         char time[50];
+        char hostname[256];
+        gethostname(hostname, sizeof(hostname));
+        char file_type[256];
 
         result = stat(file_name, &st);
         if (result == -1) {
-            
-            file = fopen("err_404.html", "rb");
+            strcpy(file_type,"text/html");
+            return_response(404, newsockfd, hostname, as, "err_404.html", NULL, file_type);
+        }
+        else{
+            gmt = gmtime(&st.st_mtime);
+
+            strftime(time, sizeof(time), "%a, %d %b %Y %T GMT", gmt);
+            file = fopen(file_name, "rb");
             if(file==NULL)
             {
                 printf("Error in opening file");
                 exit(0);
             }
-            status=404;
+             char str[10];
+   
+      
+            if(status==200)get_content_type(file_name,file_type);
+            return_response(status, newsockfd, hostname, as, file_name, time,file_type);
+            
+            printf("Sent!\n");
+            }
             
         }
-        else{
-        gmt = gmtime(&st.st_mtime);
-
-        strftime(time, sizeof(time), "%a, %d %b %Y %T GMT", gmt);
-        file = fopen(file_name, "rb");
-        if(file==NULL)
-        {
-            printf("Error in opening file");
-            exit(0);
-        }
-        }
-        char hostname[256];
-        char str[10];
-       
-
-        int size = get_file_size(file);
-        char *ba = (char *)malloc(size);
-        sprintf(str, "%d", size);
-        fread(ba, size, 1, file);
-        fclose(file);
-
-    // char *mime_type = get_file_mime_type(file_name);
-
-    // fprintf(out, "HTTP/1.1 200 OK\r\n");
-    // fprintf(out, "Content-Type: %s\r\n", mime_type);
-    // fprintf(out, "Content-Length: %ld\r\n", size);
-    // fprintf(out, "\r\n");
-        char file_type[256];
-        if(status==200)
-            get_content_type(file_name,file_type);
-        else{
-            strcpy(file_type,"text/html");
-        }
-        gethostname(hostname, sizeof(hostname));
-        if(status==200){
-        sprintf(buffer, "HTTP/1.1 %d OK\r\n", status);
-        strcat(buffer, "Date: ");
-        strcat(buffer, as);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "Server: ");
-        strcat(buffer, hostname);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "Last-Modified: ");
-        strcat(buffer,time);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "Content-Length: ");
-        strcat(buffer, str);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "Connection: close\r\n");
-        strcat(buffer, "Content-Type: ");
-        strcat(buffer, file_type);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "\r\n");
-        // strcat(buffer,ba);
-        }
-        else if(status == 404)
-        {sprintf(buffer, "HTTP/1.1 %d Not Found\r\n", status);
-        strcat(buffer, "Date: ");
-        strcat(buffer, as);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "Server: ");
-        strcat(buffer, hostname);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "Content-Length: ");
-        strcat(buffer, str);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "Connection: close\r\n");
-        strcat(buffer, "Content-Type: ");
-        strcat(buffer, file_type);
-        strcat(buffer, "\r\n");
-        strcat(buffer, "\r\n");
-        // strcat(buffer,ba);
-
-        }
-        printf("%s\n", buffer);
-        send_expr(newsockfd, buffer, strlen(buffer));
-        send_expr(newsockfd, ba, size);
-        free(ba);
-        printf("Sent!\n");
-        }
-		else if(strcmp(req.method, "PUT")==0){
-            // printf("%s\n", expr);
-        }
+        else if(strcmp(req.method, "PUT")==0){
+                // printf("%s\n", expr);
+            }
         // Deallocate the request
         if(req.body_size > 0)
             free(req.body);
