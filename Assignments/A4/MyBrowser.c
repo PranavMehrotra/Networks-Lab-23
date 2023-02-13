@@ -118,6 +118,9 @@ void get_content_type(const char *file_name, char *file) {
     else if (strcmp(extension, "jpeg") == 0) {
         strcpy(file,"image/jpeg");
     }
+    else if(strcmp(extension,"txt")==0){
+        strcpy(file,"text/plain");
+    }
     else {
         strcpy(file,"text/*");
     } 
@@ -201,6 +204,9 @@ int parse_http_response(char *resp, int response_len, response *parsed_response)
             }
             strncpy(parsed_response->content_type, content_type, content_type_end - content_type);
             parsed_response->content_type[content_type_end - content_type] = '\0';
+            if(strcasecmp(parsed_response->content_type,"plain")==0){
+                strcpy(parsed_response->content_type,"txt");
+            }
         }
     }
 

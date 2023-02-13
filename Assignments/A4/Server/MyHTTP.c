@@ -222,6 +222,9 @@ int parse_http_request(char *req, int request_len, request *parsed_request) {
             }
             strncpy(parsed_request->content_type, content_type, content_type_end - content_type);
             parsed_request->content_type[content_type_end - content_type] = '\0';
+            if(strcasecmp(parsed_request->content_type,"plain")==0){
+                strcpy(parsed_request->content_type,"txt");
+            }
         }
     }
 
