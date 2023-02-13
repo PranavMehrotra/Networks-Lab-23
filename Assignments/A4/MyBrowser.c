@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <poll.h>
 
 #define BUFSIZE 1024
 #define MAX_SIZE 500
@@ -180,8 +181,11 @@ int main() {
     char hostname[BUFSIZE];
     char command[20],url[BUFSIZE],buffer[3*BUFSIZE],filename[256];
     char *parse_filename;
+    // Polling variables
+    struct pollfd pollfd[1];
+    int timeout = 3000;
+    int poll_ret;
     while(1){
-        
         printf("MyOwnBrowser> ");
         scanf("%s",command);
         if(strcasecmp(command,"QUIT")==0)   break;
@@ -216,7 +220,6 @@ int main() {
             fprintf(stderr,"ERROR, no such host\n");
             continue;
         }
-        // printf("%s\n",server->h_addr);
         sockfd = socket(AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0) {
             perror("ERROR opening socket");
@@ -228,10 +231,13 @@ int main() {
         serv_addr.sin_port = htons(portno);
         if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) {
             perror("ERROR connecting");
+            close(sockfd);
             continue;
         }
-
-        char *filetype;
+        // Assign the socket to the pollfd structure
+        pollfd[0].fd = sockfd;
+        pollfd[0].events = POLLIN;
+        char *filetype=NULL;
         if(strcasecmp(command,"GET")==0){
 
             parse_filename = strrchr(url, '/');
@@ -253,22 +259,25 @@ int main() {
 
             printf("**%s\n", filename);
             char type[50];
-            get_content_type(filetype, type);
+            if(filetype && strlen(filetype) > 1)
+                get_content_type(filetype, type);
+            else{
+                strcpy(type, "*/*");
+            }
             time_t now = time(NULL);
             now -= 2 * 24 * 60 * 60;  // subtract 2 days
 
             struct tm *tm = gmtime(&now);
             char if_modified[100];
             strftime(if_modified, sizeof(if_modified), "%a, %d %b %Y %H:%M:%S GMT", tm);
-           
             /* Construct HTTP GET request */
             sprintf(buffer, "GET %s HTTP/1.1\r\n", url);
             strcat(buffer, "Host: ");
             strcat(buffer, hostname);
             strcat(buffer, "\r\n");
-            // strcat(buffer, "If-Modified-Since: ");
-            // strcat(buffer, if_modified);
-            // strcat(buffer, "\r\n");
+            strcat(buffer, "If-Modified-Since: ");
+            strcat(buffer, if_modified);
+            strcat(buffer, "\r\n");
             strcat(buffer, "Accept-Language: ");
             strcat(buffer, "en-us;q=1,en;q=0.9");
             strcat(buffer, "\r\n");
@@ -284,10 +293,23 @@ int main() {
             int total = 0;
             int bytesReceived = 0;
             send_expr(sockfd, buffer, strlen(buffer));
+            // Wait for response with a timeout
+            poll_ret = poll(pollfd, 1, timeout);
+            if (poll_ret == 0) {
+                printf("Connection Timeout. No Response from Server.\n");
+                close(sockfd);
+                continue;
+            }
+            if (poll_ret < 0) {
+                perror("ERROR in poll");
+                close(sockfd);
+                continue;
+            }
             int resp_size=0;
             char *s = recieve_expr(sockfd,&resp_size);
             if(s==NULL || resp_size==0){
                 printf("No Response\n");
+                close(sockfd);
                 continue;
             }
             printf("Response received\n");
@@ -420,6 +442,7 @@ int main() {
         }
         else{
             printf("Invalid Command\n");
+            close(sockfd);
         }
     }
 

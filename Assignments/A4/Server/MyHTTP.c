@@ -15,7 +15,7 @@
 #define FILE_NAME_SIZE 256
 #define SMALL_MSG_SIZE 30
 #define TIME_BUF_SIZE 30
-#define EXECESS_CHARS_LEN 6
+#define EXCESS_CHARS_LEN 6
 
 typedef struct{
     char *name;
@@ -79,7 +79,7 @@ char *recieve_expr(int newsockfd, int *recv_size){
 	if(!s)	return NULL;
 	while((y=recv(newsockfd,s+len,chunk,0))>0){
         len+=y;
-		if(len>EXECESS_CHARS_LEN && strncmp(s+len-EXECESS_CHARS_LEN,"\r\n\r\n\r\n",EXECESS_CHARS_LEN)==0)	break;
+		if(len>EXCESS_CHARS_LEN && strncmp(s+len-EXCESS_CHARS_LEN,"\r\n\r\n\r\n",EXCESS_CHARS_LEN)==0)	break;
 		while(len+chunk>=size){
 			s = realloc(s,sizeof(char)*(size*=2));
 			if(!s)	return NULL;
@@ -89,26 +89,27 @@ char *recieve_expr(int newsockfd, int *recv_size){
 		free(s);
 		return NULL;
 	}
-	s = realloc(s,sizeof(char)*(len-EXECESS_CHARS_LEN+1));
+	s = realloc(s,sizeof(char)*(len-EXCESS_CHARS_LEN+1));
     *recv_size = len;
     return s;
 }
 
-void send_expr(int newsockfd, char *expr, int size){
+int send_expr(int newsockfd, char *expr, int size){
 	int len=0,y,chunk=MAX_SIZE;
 	if(size<chunk){
-		send(newsockfd,expr,size,0);
-		return;
+		if(send(newsockfd,expr,size,0)<0)   return 1;
+		return 0;
 	}
 	while(1){
 		if(len+chunk>size){
             
-			send(newsockfd,expr+len,size-len,0);
+			if(send(newsockfd,expr+len,size-len,0)<0)  return 1;
 			break;
 		}
-		y=send(newsockfd,expr+len,chunk,0);
+		if((y=send(newsockfd,expr+len,chunk,0))<0)  return 1;
 		len+=y;
 	}
+    return 0;
 }
 
 int parse_http_request(char *req, int request_len, request *parsed_request) {
@@ -171,10 +172,6 @@ int parse_http_request(char *req, int request_len, request *parsed_request) {
         current_header->value = strdup(current_header->value);
         if(strcasecmp(current_header->name,"Content-Length")==0){
             parsed_request->body_size = atoi(current_header->value);
-            if(parsed_request->body_size > 0 && strcmp(parsed_request->method,"GET")!=0){
-                if(parsed_request->body)
-                    parsed_request->body = (char *)realloc(parsed_request->body, parsed_request->body_size);
-            }
         }
         else if(strcasecmp(current_header->name,"Content-Type")==0){
             // Parse the content_type to get the content type, with delimeter '/'
@@ -315,176 +312,174 @@ int main(void)
 
 		if (newsockfd < 0) {
 			perror("Accept error\n");
-			exit(0);
+			continue;
 		}
-        char filename[FILE_NAME_SIZE];
-        int req_size = 0;
-		char *expr = recieve_expr(newsockfd, &req_size);
-		if(!expr){
-			printf("Error in recieving the HTTP request\n");
-            return_response(400, newsockfd, hostname, NULL, "err_400.html", NULL, "text/html");
-            continue;
-		}
-        request req;
-        if(parse_http_request(expr, req_size,&req)){
-            printf("Error in parsing the HTTP request\n");
-            return_response(400, newsockfd, hostname, NULL, "err_400.html", NULL, "text/html");
-            free(expr);
-            continue;
-        }
-        // Print the request
-        printf("Method: %s\n", req.method);
-        printf("URL: %s\n", req.url);
-        printf("Body size: %d\n", req.body_size);
-        printf("Number of headers: %d\n", req.num_headers-1);
-        for (int i = 1; i < req.num_headers; i++) {
-            printf("%s: %s\n", req.headers[i].name, req.headers[i].value);
-        }
-        // printf("Content type: %s\n", req.content_type);
-
-
-        FILE *access;
-        time_t rawtime;
-        struct tm *timeinfo;
-        char current_time[TIME_BUF_SIZE];
-        char date[TIME_BUF_SIZE];
-        char t[TIME_BUF_SIZE];
-
-        time(&rawtime);
-        timeinfo = gmtime(&rawtime);
-
-        strftime(current_time, TIME_BUF_SIZE, "%a, %d %b %Y %T GMT", timeinfo);
-        
-        strftime(date, TIME_BUF_SIZE, "%d%m%y", timeinfo);
-        strftime(t, TIME_BUF_SIZE, "%H%M%S", timeinfo);
-
-        char input[2*BUFSIZE];
-        sprintf(input, "%s:%s:%s:%d:%s:%s\n",date, t,inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port),req.method, req.url);
-        // printf("%s", input);
-        access = fopen("AccessLog.txt", "a+");
-        if(access == NULL)
-            perror("Error opening Access Log file");
-        else{
-            fprintf(access, "%s", input);
-            fclose(access);
-        }
-
-        if(strcmp(req.method,"GET")==0){
-        FILE *file;
-        int status =200;
-        
-        // struct tm gmt_time = {0};
-        // strptime(str_time, "%a, %d %b %Y %T GMT", &gmt_time);
-
-        // // Calculate difference between two GMT time objects
-        // struct tm other_gmt_time = {0};
-        // strptime("Sun, 12 Feb 2023 19:33:35 GMT", "%a, %d %b %Y %T GMT", &other_gmt_time);
-        // time_t gmt_time_seconds = mktime(&gmt_time);
-        // time_t other_gmt_time_seconds = mktime(&other_gmt_time);
-        // double difference_in_seconds = difftime(other_gmt_time_seconds, gmt_time_seconds);
-        // printf("Difference between two GMT time objects in seconds: %f\n", difference_in_seconds);
-
-        char file_name[FILE_NAME_SIZE];
-        char *parse_filename = strchr(req.url, '/');
-        if (parse_filename == NULL) {
-            strcpy(file_name,"test.txt");
-        }
-        else{
-            parse_filename++;
-            strcpy(file_name, parse_filename);
-        }
-        int result;
-        struct stat st;
-        struct tm *gmt;
-        char last_modify_time[TIME_BUF_SIZE];
-        char file_type[FILE_NAME_SIZE];
-
-        result = stat(file_name, &st);
-        if (result == -1) {
-            strcpy(file_type,"text/html");
-            return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, file_type);
-        }
-        else{
-            gmt = gmtime(&st.st_mtime);
-
-            strftime(last_modify_time, sizeof(last_modify_time), "%a, %d %b %Y %T GMT", gmt);
-            
-
-            struct tm is_modified = {0};
+        // Concurrent Server
+        if(fork()==0){
+            close(sockfd);
+            char filename[FILE_NAME_SIZE];
+            int req_size = 0;
+            char *expr = recieve_expr(newsockfd, &req_size);
+            if(!expr){
+                printf("Error in recieving the HTTP request\n");
+                return_response(400, newsockfd, hostname, NULL, "err_400.html", NULL, "text/html");
+                continue;
+            }
+            request req;
+            if(parse_http_request(expr, req_size,&req)){
+                printf("Error in parsing the HTTP request\n");
+                return_response(400, newsockfd, hostname, NULL, "err_400.html", NULL, "text/html");
+                free(expr);
+                continue;
+            }
+            // Print the request
+            printf("Method: %s\n", req.method);
+            printf("URL: %s\n", req.url);
+            printf("Body size: %d\n", req.body_size);
+            printf("Number of headers: %d\n", req.num_headers-1);
             for (int i = 1; i < req.num_headers; i++) {
-                if(strcmp(req.headers[i].name, "If-Modified-Since")==0)
-                {
-                    char month[5];
-                    sscanf(req.headers[i].value, "%*3s, %d %3s %d %d:%d:%d GMT", &is_modified.tm_mday, month, &is_modified.tm_year, &is_modified.tm_hour, &is_modified.tm_min, &is_modified.tm_sec);
-                    is_modified.tm_year -= 1900;
-                    if (strcmp(month, "Jan") == 0) is_modified.tm_mon = 0;
-                    else if (strcmp(month, "Feb") == 0) is_modified.tm_mon = 1;
-                    else if (strcmp(month, "Mar") == 0) is_modified.tm_mon = 2;
-                    else if (strcmp(month, "Apr") == 0) is_modified.tm_mon = 3;
-                    else if (strcmp(month, "May") == 0) is_modified.tm_mon = 4;
-                    else if (strcmp(month, "Jun") == 0) is_modified.tm_mon = 5;
-                    else if (strcmp(month, "Jul") == 0) is_modified.tm_mon = 6;
-                    else if (strcmp(month, "Aug") == 0) is_modified.tm_mon = 7;
-                    else if (strcmp(month, "Sep") == 0) is_modified.tm_mon = 8;
-                    else if (strcmp(month, "Oct") == 0) is_modified.tm_mon = 9;
-                    else if (strcmp(month, "Nov") == 0) is_modified.tm_mon = 10;
-                    else if (strcmp(month, "Dec") == 0) is_modified.tm_mon = 11;
-                    else is_modified.tm_mon = -1;
+                printf("%s: %s\n", req.headers[i].name, req.headers[i].value);
+            }
+            // printf("Content type: %s\n", req.content_type);
+            FILE *access;
+            time_t rawtime;
+            struct tm *timeinfo;
+            char current_time[TIME_BUF_SIZE];
+            char date[TIME_BUF_SIZE];
+            char t[TIME_BUF_SIZE];
+
+            time(&rawtime);
+            timeinfo = gmtime(&rawtime);
+
+            strftime(current_time, TIME_BUF_SIZE, "%a, %d %b %Y %T GMT", timeinfo);
+            
+            strftime(date, TIME_BUF_SIZE, "%d%m%y", timeinfo);
+            strftime(t, TIME_BUF_SIZE, "%H%M%S", timeinfo);
+
+            char input[2*BUFSIZE];
+            sprintf(input, "%s:%s:%s:%d:%s:%s\n",date, t,inet_ntoa(cli_addr.sin_addr),ntohs(cli_addr.sin_port),req.method, req.url);
+            // printf("%s", input);
+            access = fopen("AccessLog.txt", "a+");
+            if(access == NULL)
+                perror("Error opening Access Log file");
+            else{
+                fprintf(access, "%s", input);
+                fclose(access);
+            }
+
+            if(strcmp(req.method,"GET")==0){
+                FILE *file;
+                int status =200;
+                char file_name[FILE_NAME_SIZE];
+                char *parse_filename = strchr(req.url, '/');
+                if (parse_filename == NULL) {
+                    strcpy(file_name,"test.txt");
+                }
+                else{
+                    parse_filename++;
+                    strcpy(file_name, parse_filename);
+                }
+                int result;
+                struct stat st;
+                struct tm *gmt;
+                char last_modify_time[TIME_BUF_SIZE];
+                char file_type[FILE_NAME_SIZE];
+
+                result = stat(file_name, &st);
+                if (result == -1) {
+                    strcpy(file_type,"text/html");
+                    return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, file_type);
+                }
+                else{
+                    gmt = gmtime(&st.st_mtime);
+
+                    strftime(last_modify_time, sizeof(last_modify_time), "%a, %d %b %Y %T GMT", gmt);
+                    
+
+                    struct tm is_modified = {0};
+                    for (int i = 1; i < req.num_headers; i++) {
+                        if(strcmp(req.headers[i].name, "If-Modified-Since")==0)
+                        {
+                            char month[5];
+                            sscanf(req.headers[i].value, "%*3s, %d %3s %d %d:%d:%d GMT", &is_modified.tm_mday, month, &is_modified.tm_year, &is_modified.tm_hour, &is_modified.tm_min, &is_modified.tm_sec);
+                            is_modified.tm_year -= 1900;
+                            if (strcmp(month, "Jan") == 0) is_modified.tm_mon = 0;
+                            else if (strcmp(month, "Feb") == 0) is_modified.tm_mon = 1;
+                            else if (strcmp(month, "Mar") == 0) is_modified.tm_mon = 2;
+                            else if (strcmp(month, "Apr") == 0) is_modified.tm_mon = 3;
+                            else if (strcmp(month, "May") == 0) is_modified.tm_mon = 4;
+                            else if (strcmp(month, "Jun") == 0) is_modified.tm_mon = 5;
+                            else if (strcmp(month, "Jul") == 0) is_modified.tm_mon = 6;
+                            else if (strcmp(month, "Aug") == 0) is_modified.tm_mon = 7;
+                            else if (strcmp(month, "Sep") == 0) is_modified.tm_mon = 8;
+                            else if (strcmp(month, "Oct") == 0) is_modified.tm_mon = 9;
+                            else if (strcmp(month, "Nov") == 0) is_modified.tm_mon = 10;
+                            else if (strcmp(month, "Dec") == 0) is_modified.tm_mon = 11;
+                            else is_modified.tm_mon = -1;
+                        }
+                    }
+                    
+                
+                    double difference_in_seconds=1;
+                    if(is_modified.tm_mday!=0){
+                        time_t last_modify_seconds = mktime(gmt);
+                        time_t is_modified_seconds = mktime(&is_modified);
+                        difference_in_seconds =  difftime(last_modify_seconds, is_modified_seconds);
+                    }
+                    // printf("Difference between two GMT time objects in seconds: %f\n", difference_in_seconds);
+                    if(difference_in_seconds<0){
+                        status = 304;
+                        return_response(status, newsockfd, hostname, current_time, NULL, NULL, NULL);
+                    }
+                    else{
+                        file = fopen(file_name, "rb");
+                        if(file==NULL){
+                            perror("Error in opening file");
+                            // strcpy(file_type,"text/html");
+                            return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
+                        }
+                        else if(status==200){
+                            fclose(file);
+                            get_content_type(file_name,file_type);
+                            return_response(status, newsockfd, hostname, current_time, file_name, last_modify_time,file_type);
+                        }
+                    }
                 }
             }
-            
-        
-            time_t last_modify_seconds = mktime(gmt);
-            time_t is_modified_seconds = mktime(&is_modified);
-            double difference_in_seconds = difftime(last_modify_seconds, is_modified_seconds);
-            // printf("Difference between two GMT time objects in seconds: %f\n", difference_in_seconds);
-            if(difference_in_seconds<0){
-                status = 304;
-                return_response(status, newsockfd, hostname, current_time, NULL, NULL, NULL);
-            }
-            else{
-                file = fopen(file_name, "rb");
-                if(file==NULL){
+            else if(strcmp(req.method, "PUT")==0){
+                int status = 200;
+                FILE *file;
+                char file_type[FILE_NAME_SIZE];
+                file = fopen((req.url)+1, "wb");
+                if(file==NULL)
+                {
                     perror("Error in opening file");
                     // strcpy(file_type,"text/html");
                     return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
                 }
-                else if(status==200){
-                    get_content_type(file_name,file_type);
-                    return_response(status, newsockfd, hostname, current_time, file_name, last_modify_time,file_type);
+                else{
+                    if(fwrite(req.body, 1, req.body_size, file)!=req.body_size){
+                        perror("Error in writing to file");
+                        status = 500;
+                    }
+                    fclose(file);
+                    return_response(status, newsockfd, hostname, current_time, NULL, NULL,NULL);
                 }
-                }
-            }
-            
-        }
-        else if(strcmp(req.method, "PUT")==0){
-            int status = 200;
-            FILE *file;
-            char file_type[FILE_NAME_SIZE];
-            file = fopen((req.url)+1, "wb");
-            if(file==NULL)
-            {
-                perror("Error in opening file");
-                // strcpy(file_type,"text/html");
-                return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
             }
             else{
-                if(fwrite(req.body, 1, req.body_size, file)!=req.body_size){
-                    perror("Error in writing to file");
-                    status = 500;
-                }
-                fclose(file);
-                return_response(status, newsockfd, hostname, current_time, NULL, NULL,NULL);
+                return_response(400, newsockfd, hostname, NULL, "err_400.html", NULL, "text/html");
             }
+            // Deallocate the request
+            if(req.body_size > 0)
+                free(expr);
+            for (int i = 1; i < req.num_headers; i++) {
+                free(req.headers[i].name);
+                free(req.headers[i].value);
+            }
+            free(req.headers);
+            close(newsockfd);
+            exit(0);
         }
-        // Deallocate the request
-        if(req.body_size > 0)
-            free(expr);
-        for (int i = 1; i < req.num_headers; i++) {
-            free(req.headers[i].name);
-            free(req.headers[i].value);
-        }
-        free(req.headers);
         close(newsockfd);
 	}
 	return 0;
