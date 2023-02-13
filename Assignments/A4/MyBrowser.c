@@ -120,7 +120,7 @@ int parse_http_response(char *resp, int response_len, response *parsed_response)
     parsed_response->body =  resp + header_len;
     parsed_response->body_size = body_len;
     // free(resp);
-    printf("Headers: %s\n", headers);
+    printf("Headers: %s\n\n", headers);
     // Split the headers into individual lines
     char *header_lines[32];
     int num_header_lines = 0;
@@ -306,8 +306,8 @@ int main() {
                 continue;
             }
             int resp_size=0;
-            char *s = recieve_expr(sockfd,&resp_size);
-            if(s==NULL || resp_size==0){
+            char *expr = recieve_expr(sockfd,&resp_size);
+            if(expr==NULL || resp_size==0){
                 printf("No Response\n");
                 close(sockfd);
                 continue;
@@ -315,9 +315,9 @@ int main() {
             printf("Response received\n");
             close(sockfd);
             response resp;
-            if(parse_http_response(s, resp_size,&resp)){
+            if(parse_http_response(expr, resp_size,&resp)){
                 printf("Error in parsing the HTTP response\n");
-                free(s);
+                free(expr);
                 continue;
             }
             // Print the response
@@ -360,7 +360,7 @@ int main() {
                 printf("Unknown Error: %d\n", resp.status_code);
             }
             // Deallocate Response memory
-            free(s);
+            free(expr);
             for(int i=1;i<resp.num_headers;i++){
                 free(resp.headers[i].name);
                 free(resp.headers[i].value);
@@ -382,6 +382,7 @@ int main() {
             result = stat(filename, &st);
             if (result == -1) {
                 perror("Error");
+                close(sockfd);
                 continue;
             }
             else{
@@ -389,6 +390,7 @@ int main() {
                 file = fopen(filename, "rb");
                 if (file == NULL) {
                     perror("Error");
+                    close(sockfd);
                     continue;
                 }
             }
@@ -416,15 +418,40 @@ int main() {
             if(strcasecmp(hostname,"0.0.0.0")==0 || strcasecmp(hostname,"localhost")==0)
                 send_expr(sockfd, "\r\n\r\n\r\n", 6);
             free(ba);
-            // printf("Sent!\n");
+            // Wait for response with a timeout
+            poll_ret = poll(pollfd, 1, timeout);
+            if (poll_ret == 0) {
+                printf("Connection Timeout. No Response from Server.\n");
+                close(sockfd);
+                continue;
+            }
+            if (poll_ret < 0) {
+                perror("ERROR in poll");
+                close(sockfd);
+                continue;
+            }
             int resp_len;
-            char *s = recieve_expr(sockfd,&resp_len);
-            if(s==NULL || resp_len==0){
+            char *expr = recieve_expr(sockfd,&resp_len);
+            if(expr==NULL || resp_len==0){
                 printf("No Response\n");
+                close(sockfd);
                 continue;
             }
             // printf("Response received\n");
-            char *status = strtok(s, " ");
+            char *header_end = strstr(expr, "\r\n\r\n");
+            if(header_end==NULL){
+                printf("Invalid Response\n");
+                free(expr);
+                close(sockfd);
+                continue;
+            }
+            // Print headers
+            char *header = (char *)malloc((header_end-expr+1)*sizeof(char));
+            strncpy(header, expr, header_end-expr);
+            header[header_end-expr] = '\0';
+            printf("Headers: %s\n\n", header);
+            free(header);
+            char *status = strtok(expr, " ");
             status = strtok(NULL, " ");
             char *status_message = strtok(NULL, "\r\n");
             int status_code = atoi(status);
@@ -437,7 +464,7 @@ int main() {
             else{
                 printf("Unknown Error: %d\n", status_code);
             }
-            free(s);
+            free(expr);
             close(sockfd);
         }
         else{
@@ -448,6 +475,6 @@ int main() {
 
     return 0;
 }
-//./b 203.110.245.250 80 http://cse.iitkgp.ac.in/~agupta/networks/index.html
-//./b 203.110.245.250 80 http://cse.iitkgp.ac.in/~agupta/networks/1-Introduction.pdf
-// ./b 188.184.21.108 80 http://info.cern.ch/hypertext/WWW/TheProject.html
+// http://cse.iitkgp.ac.in/~agupta/networks/index.html
+// http://cse.iitkgp.ac.in/~agupta/networks/1-Introduction.pdf
+// http://info.cern.ch/hypertext/WWW/TheProject.html
