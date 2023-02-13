@@ -115,10 +115,10 @@ int parse_http_response(char *resp, int response_len, response *parsed_response)
     strncpy(headers, resp, header_len);
     headers[header_len] = '\0';
     int body_len = response_len - header_len;
-    parsed_response->body = (char *)malloc(body_len*sizeof(char));
-    memcpy(parsed_response->body, resp + header_len, body_len);
+    // parsed_response->body = (char *)malloc(body_len*sizeof(char));
+    parsed_response->body =  resp + header_len;
     parsed_response->body_size = body_len;
-    free(resp);
+    // free(resp);
     printf("Headers: %s\n", headers);
     // Split the headers into individual lines
     char *header_lines[32];
@@ -266,9 +266,9 @@ int main() {
             strcat(buffer, "Host: ");
             strcat(buffer, hostname);
             strcat(buffer, "\r\n");
-            strcat(buffer, "If-Modified-Since: ");
-            strcat(buffer, if_modified);
-            strcat(buffer, "\r\n");
+            // strcat(buffer, "If-Modified-Since: ");
+            // strcat(buffer, if_modified);
+            // strcat(buffer, "\r\n");
             strcat(buffer, "Accept-Language: ");
             strcat(buffer, "en-us;q=1,en;q=0.9");
             strcat(buffer, "\r\n");
@@ -295,6 +295,7 @@ int main() {
             response resp;
             if(parse_http_response(s, resp_size,&resp)){
                 printf("Error in parsing the HTTP response\n");
+                free(s);
                 continue;
             }
             // Print the response
@@ -337,7 +338,7 @@ int main() {
                 printf("Unknown Error: %d\n", resp.status_code);
             }
             // Deallocate Response memory
-            free(resp.body);
+            free(s);
             for(int i=1;i<resp.num_headers;i++){
                 free(resp.headers[i].name);
                 free(resp.headers[i].value);

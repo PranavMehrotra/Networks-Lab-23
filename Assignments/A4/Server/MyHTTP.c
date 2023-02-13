@@ -125,10 +125,10 @@ int parse_http_request(char *req, int request_len, request *parsed_request) {
     strncpy(headers, req, header_len);
     headers[header_len] = '\0';
     int body_len = request_len - header_len;
-    parsed_request->body = (char *)malloc(body_len*sizeof(char));
-    memcpy(parsed_request->body, req + header_len, body_len);
+    // parsed_request->body = (char *)malloc(body_len*sizeof(char));
+    parsed_request->body= req + header_len;
     parsed_request->body_size = body_len;
-    free(req);
+    // free(req);
     // printf("Headers: %s\n", headers);
     // Split the headers into individual lines
     char *header_lines[32];
@@ -153,8 +153,7 @@ int parse_http_request(char *req, int request_len, request *parsed_request) {
     }
 
     if(strcmp(parsed_request->method,"GET")==0){
-        if(parsed_request->body)
-            free(parsed_request->body);
+        free(req);
         parsed_request->body_size = 0;
     }
 
@@ -330,6 +329,7 @@ int main(void)
         if(parse_http_request(expr, req_size,&req)){
             printf("Error in parsing the HTTP request\n");
             return_response(400, newsockfd, hostname, NULL, "err_400.html", NULL, "text/html");
+            free(expr);
             continue;
         }
         // Print the request
@@ -479,7 +479,7 @@ int main(void)
         }
         // Deallocate the request
         if(req.body_size > 0)
-            free(req.body);
+            free(expr);
         for (int i = 1; i < req.num_headers; i++) {
             free(req.headers[i].name);
             free(req.headers[i].value);
