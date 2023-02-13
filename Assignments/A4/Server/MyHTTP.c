@@ -401,6 +401,7 @@ int main(void)
             for (int i = 1; i < req.num_headers; i++) {
                 printf("%s: %s\n", req.headers[i].name, req.headers[i].value);
             }
+            printf("\n");
             // printf("Content type: %s\n", req.content_type);
             FILE *access;
             time_t rawtime;
