@@ -8,6 +8,9 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <sys/stat.h>
+#include<errno.h>
+
+extern int errno;
 
 #define BUFSIZE 1024
 #define MAX_SIZE 500
@@ -248,6 +251,21 @@ void return_response(int status, int newsockfd, const char *hostname, const char
         strcat(buffer, hostname);
         strcat(buffer, "\r\n");
     }
+    strcat(buffer, "Cache-control: ");
+    strcat(buffer, "no-store");
+    strcat(buffer, "\r\n");
+    
+    time_t now = time(NULL);
+    now += 3 * 24 * 60 * 60;  // add 3 days
+
+    struct tm *tm = gmtime(&now);
+    char expires[100];
+    strftime(expires, sizeof(expires), "%a, %d %b %Y %H:%M:%S GMT", tm);
+    if(expires){
+        strcat(buffer, "Expires: ");
+        strcat(buffer, expires);
+        strcat(buffer, "\r\n");
+    }
     strcat(buffer, "Connection: close\r\n");
     if(filename)
         file = fopen(filename, "rb");
@@ -257,6 +275,7 @@ void return_response(int status, int newsockfd, const char *hostname, const char
         ba = (char *)malloc(size);
         fread(ba, size, 1, file);
         fclose(file);
+
         strcat(buffer, "Content-Length: ");
         strcat(buffer, str);
         strcat(buffer, "\r\n");
@@ -385,10 +404,17 @@ int main(void)
                 char last_modify_time[TIME_BUF_SIZE];
                 char file_type[FILE_NAME_SIZE];
 
+                errno = 0;
                 result = stat(file_name, &st);
                 if (result == -1) {
-                    strcpy(file_type,"text/html");
-                    return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, file_type);
+                    if(errno==EACCES){
+                        strcpy(file_type,"text/html");
+                        return_response(404, newsockfd, hostname, current_time, "err_403.html", NULL, file_type);
+                    }
+                    else {
+                        strcpy(file_type,"text/html");
+                        return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, file_type);
+                    }
                 }
                 else{
                     gmt = gmtime(&st.st_mtime);
@@ -432,11 +458,17 @@ int main(void)
                         return_response(status, newsockfd, hostname, current_time, NULL, NULL, NULL);
                     }
                     else{
+                        errno = 0;
                         file = fopen(file_name, "rb");
                         if(file==NULL){
-                            perror("Error in opening file");
-                            // strcpy(file_type,"text/html");
-                            return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
+                            if(errno==EACCES){
+                                strcpy(file_type,"text/html");
+                                return_response(404, newsockfd, hostname, current_time, "err_403.html", NULL, file_type);
+                            }
+                            else{
+                                perror("Error in opening file");
+                                return_response(404, newsockfd, hostname, current_time, "err_404.html", NULL, "text/html");
+                            }
                         }
                         else if(status==200){
                             fclose(file);

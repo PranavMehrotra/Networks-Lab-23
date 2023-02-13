@@ -257,7 +257,7 @@ int main() {
                 }
             }
 
-            printf("**%s\n", filename);
+            
             char type[50];
             if(filetype && strlen(filetype) > 1)
                 get_content_type(filetype, type);
