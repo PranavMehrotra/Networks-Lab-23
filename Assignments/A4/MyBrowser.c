@@ -83,6 +83,7 @@ long get_file_size(FILE *file) {
     rewind(file);
     return size;
 }
+
 void get_content_type(const char *file_name, char *file) {
     const char *extension = strrchr(file_name, '.');
     extension++;
@@ -95,12 +96,8 @@ void get_content_type(const char *file_name, char *file) {
     else if (strcmp(extension, "jpeg") == 0) {
         strcpy(file,"image/jpeg");
     }
-    else if(strcmp(extension,"txt")==0){
-        strcpy(file,"text/plain");
-    }
     else {
-        strcpy(file,"application/");
-        strcat(file,extension);
+        strcpy(file,"text/*");
     } 
 }
 
@@ -234,6 +231,7 @@ int main() {
             continue;
         }
 
+        char *filetype;
         if(strcasecmp(command,"GET")==0){
 
             parse_filename = strrchr(url, '/');
@@ -242,7 +240,7 @@ int main() {
             }
             else{
                 parse_filename++;
-                char *filetype = strstr(parse_filename, ".");
+                filetype = strstr(parse_filename, ".");
                 if (filetype == NULL) {
                     strcpy(filename,"test");
                 }
@@ -253,22 +251,33 @@ int main() {
                 }
             }
 
+            printf("**%s\n", filename);
+            char type[50];
+            get_content_type(filetype, type);
             time_t now = time(NULL);
             now -= 2 * 24 * 60 * 60;  // subtract 2 days
 
             struct tm *tm = gmtime(&now);
-            char cs[100];
-            strftime(cs, sizeof(cs), "%a, %d %b %Y %H:%M:%S GMT", tm);
-            // printf("%s\n", cs);
+            char if_modified[100];
+            strftime(if_modified, sizeof(if_modified), "%a, %d %b %Y %H:%M:%S GMT", tm);
+           
             /* Construct HTTP GET request */
             sprintf(buffer, "GET %s HTTP/1.1\r\n", url);
             strcat(buffer, "Host: ");
             strcat(buffer, hostname);
             strcat(buffer, "\r\n");
             strcat(buffer, "If-Modified-Since: ");
-            strcat(buffer, cs);
+            strcat(buffer, if_modified);
             strcat(buffer, "\r\n");
-            strcat(buffer, "Accept: */*\r\n");
+            strcat(buffer, "Accept-Language: ");
+            strcat(buffer, "en-us;q=1,en;q=0.9");
+            strcat(buffer, "\r\n");
+            strcat(buffer, "Content-Language: ");
+            strcat(buffer, "en-us");
+            strcat(buffer, "\r\n");
+            strcat(buffer, "Accept: ");
+            strcat(buffer, type);
+            strcat(buffer, "\r\n");
             strcat(buffer, "Connection: close\r\n");
             strcat(buffer, "\r\n");
             strcat(buffer, "\r\n\r\n\r\n");
