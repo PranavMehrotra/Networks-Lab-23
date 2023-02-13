@@ -41,7 +41,7 @@ typedef struct{
 //struct for response
 typedef struct{
     int status_code;            //200,400,403,404
-    char status_message[30];    //status message following code
+    char status_message[50];    //status message following code
     header *headers;            //array of headers
     int num_headers;            //number of headers 
     char *body;                 //content receieved
@@ -170,7 +170,7 @@ int parse_http_response(char *resp, int response_len, response *parsed_response)
     }
 
     // Parse the first line to get the HTTP status code
-    if (sscanf(header_lines[0], "HTTP/1.1 %d %s",&(parsed_response->status_code),parsed_response->status_message)!=2) {
+    if (sscanf(header_lines[0], "HTTP/1.1 %d %49[a-zA-Z0-9 ]",&(parsed_response->status_code),parsed_response->status_message)!=2) {
         // Handle error: first line not in correct format
         free(headers);
         return 1;
@@ -413,9 +413,10 @@ int main() {
                     strcpy(file_name, filename);
                     strcat(file_name, ".");
                     strcat(file_name, resp.content_type);
-                    printf("%s\n", file_name);
                     fp = fopen(file_name, "w");
-                    fwrite(resp.body, sizeof(char), resp.body_size, fp); //write the content of file received
+                    if(fwrite(resp.body, sizeof(char), resp.body_size, fp) == resp.body_size){ //write the content of file received
+                        printf("File %s downloaded successfully\n", file_name);
+                    }
                     fclose(fp);
 
                     //fork a child
@@ -542,10 +543,11 @@ int main() {
             header[header_end-expr] = '\0';
             printf("Headers: %s\n\n", header);
             free(header);
-            char *status = strtok(expr, " ");
-            status = strtok(NULL, " ");
-            char *status_message = strtok(NULL, "\r\n");
-            int status_code = atoi(status);
+            char *first_header_line = strtok(expr, "\r\n");
+            int status_code;
+            char status_message[50];
+            sscanf(first_header_line, "HTTP/1.1 %d %49[a-zA-Z0-9 ]", &status_code, status_message);
+            // printf("Status Message: %s\n", status_message);
             if(status_code==200){
                 //successful file upload
                 printf("File uploaded successfully\n");
