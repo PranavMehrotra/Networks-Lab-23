@@ -1,5 +1,13 @@
 {
     "files.associations": {
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "errno.h": "c",
+        "*.tcc": "c",
+        "string_view": "c",
+        "algorithm": "c",
+        "random": "c",
+        "istream": "c",
+        "limits": "c",
+        "numeric": "c"
     }
 }
