@@ -10,6 +10,10 @@ pthread_t S_thread;
 pthread_attr_t R_attr;
 pthread_attr_t S_attr;
 
+// Pthread mutex locks
+pthread_mutex_t send_mutex;
+pthread_mutex_t receive_mutex;
+
 int my_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
     return bind(sockfd, addr, addrlen);
@@ -41,7 +45,7 @@ int recv_num(int newsockfd){
         len+=y;
         if(len==siz){
             memcpy(&ans,num,siz);
-            printf("Recieved size = %d\n",ans);
+            // printf("Recieved size = %d\n",ans);
             break;
         }
     }
@@ -130,7 +134,9 @@ void cleanup_R(void *arg){
     printf("Cleaning R\n");
     // Free the Receive queue
     queue *temp = receive_queue->front->next;
+    // int t=1;
     while(temp){
+        // printf("R Cleaning %d\n",t++);
         queue *temp1 = temp->next;
         free(temp->data);
         free(temp);
@@ -145,7 +151,9 @@ void cleanup_S(void *arg){
     printf("Cleaning S\n");
     // Free the Send queue
     queue *temp = send_queue->front->next;
+    // int t=1;
     while(temp){
+        // printf("S Cleaning %d\n",t++);
         queue *temp1 = temp->next;
         free(temp->data);
         free(temp);
@@ -188,8 +196,12 @@ void *R(void *arg)
         int len=0;
         char *s = recieve_expr(temp_sockfd, &len);
         if(len==0)  continue;
+        // Gather receive_queue lock
+        pthread_mutex_lock(&receive_mutex);
         //put in receive table
         push(receive_queue, s, len);
+        // Release receive_queue lock
+        pthread_mutex_unlock(&receive_mutex);
     }
     pthread_cleanup_pop(1);
     pthread_exit(0);
@@ -206,16 +218,24 @@ void *S(void *arg)
     while(1){
         //sleep for t time
         sleep(SLEEP_TIME);
+        // usleep(SLEEP_TIME*1000);
         // Test Cancel
         pthread_testcancel();
+        if(curr_sockfd==-1) continue;
         //wake
-        //see if message pending
-        int len=0;
-        char *s = pop(send_queue, &len);
-        if(len==0 || s==NULL)  continue;
-        //send in one or more call
-        send_expr(curr_sockfd, s, len);
-        free(s);
+        while(1){
+            //see if message pending
+            int len=0;
+            // Gather send_queue lock
+            pthread_mutex_lock(&send_mutex);
+            char *s = pop(send_queue, &len);
+            // Release send_queue lock
+            pthread_mutex_unlock(&send_mutex);
+            if(len==0 || s==NULL)  break;
+            //send in one or more call
+            send_expr(curr_sockfd, s, len);
+            free(s);
+        }
     }
     pthread_cleanup_pop(1);
     pthread_exit(0);
@@ -232,19 +252,43 @@ int my_socket(int domain, int type, int protocol)
     }
     else return socket(domain, type, protocol);
 
-    //Initialise send recieve table
+    //Initialise send and recieve table
+    send_queue = (queue_head *)malloc(sizeof(queue_head));
+    send_queue->front = (queue *)malloc(sizeof(queue));
+    send_queue->front->next = NULL;
+    send_queue->rear = send_queue->front;
+    receive_queue = (queue_head *)malloc(sizeof(queue_head));
+    receive_queue->front = (queue *)malloc(sizeof(queue));
+    receive_queue->front->next = NULL;
+    receive_queue->rear = receive_queue->front;
+
+    // Intialise the mutex locks
+    if(pthread_mutex_init(&send_mutex, NULL) < 0){
+        perror("userSimulator::pthread_mutex_init() failed");
+        exit(0);
+    }
+    if(pthread_mutex_init(&receive_mutex, NULL) < 0){
+        perror("userSimulator::pthread_mutex_init() failed");
+        exit(0);
+    }
+
+
     //create R and S
     if(pthread_attr_init(&R_attr) < 0){
-        exit_with_error("userSimulator::pthread_attr_init() failed");
+        perror("userSimulator::pthread_attr_init() failed");
+        exit(0);
     }
     if(pthread_create(&R_thread , &R_attr , R , NULL) < 0){
-        exit_with_error("userSimulator::pthread_create() failed");
+        perror("userSimulator::pthread_create() failed");
+        exit(0);
     }
     if(pthread_attr_init(&S_attr) < 0){
-        exit_with_error("userSimulator::pthread_attr_init() failed");
+        perror("userSimulator::pthread_attr_init() failed");
+        exit(0);
     }
     if(pthread_create(&S_thread , &S_attr , S , NULL) < 0){
-        exit_with_error("userSimulator::pthread_create() failed");
+        perror("userSimulator::pthread_create() failed");
+        exit(0);
     }
 
     return sockfd;
@@ -253,16 +297,32 @@ int my_socket(int domain, int type, int protocol)
 int my_close(int sockfd)
 {
     if(my_type){
-        if(curr_sockfd == sockfd){
-            curr_sockfd = -1;
+        sleep(MY_CLOSE_SLEEP);
+        my_type = 0;
+        curr_sockfd = -1;
+        //kill R and S threads
+        pthread_cancel(R_thread);
+        pthread_cancel(S_thread);
+        pthread_join(R_thread, NULL);
+        pthread_join(S_thread, NULL);
+        // Destroy mutex locks
+        if(pthread_mutex_destroy(&send_mutex) < 0){
+            perror("userSimulator::pthread_mutex_destroy() failed");
+            exit(0);
         }
-        else{
-            my_type = 0;
-            curr_sockfd = -1;
-            //kill R and S threads
-            pthread_cancel(R_thread);
-            pthread_cancel(S_thread);
-            
+        if(pthread_mutex_destroy(&receive_mutex) < 0){
+            perror("userSimulator::pthread_mutex_destroy() failed");
+            exit(0);
+        }
+
+        // Destroy the attributes
+        if(pthread_attr_destroy(&R_attr) < 0){
+            perror("userSimulator::pthread_attr_destroy() failed");
+            exit(0);
+        }
+        if(pthread_attr_destroy(&S_attr) < 0){
+            perror("userSimulator::pthread_attr_destroy() failed");
+            exit(0);
         }
     }
     return close(sockfd);
@@ -274,7 +334,11 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags){
         if(len<=0) return 0;
         char *s = (char *)malloc(sizeof(char)*len);
         memcpy(s, buf, len);
+        // Gather send_queue lock
+        pthread_mutex_lock(&send_mutex);
         push(send_queue, s, len);
+        // Release send_queue lock
+        pthread_mutex_unlock(&send_mutex);
         return len;
     }
     else return send(sockfd, buf, len, flags);
@@ -283,7 +347,11 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
     if(my_type){
         //put in receive table
         int len=0;
+        // Gather receive_queue lock
+        pthread_mutex_lock(&receive_mutex);
         char *s = pop(receive_queue, &len);
+        // Release receive_queue lock
+        pthread_mutex_unlock(&receive_mutex);
         if(len==0 || s==NULL)  return 0;
         memcpy(buf, s, len);
         free(s);

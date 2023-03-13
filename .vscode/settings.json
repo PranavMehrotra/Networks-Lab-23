@@ -8,6 +8,11 @@
         "random": "c",
         "istream": "c",
         "limits": "c",
-        "numeric": "c"
+        "numeric": "c",
+        "stdlib.h": "c",
+        "stat.h": "c",
+        "string.h": "c",
+        "time.h": "c",
+        "poll.h": "c"
     }
 }

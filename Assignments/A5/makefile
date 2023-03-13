@@ -4,7 +4,7 @@ INCLUDEDIR = /usr/include
 
 install: library
 	mv $(LIBNAME) $(LIBDIR)
-	cp graph.h $(INCLUDEDIR)
+	cp mysocket.h $(INCLUDEDIR)
 	rm -f mysocket.o
 
 library: mysocket.o

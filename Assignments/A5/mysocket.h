@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <pthread.h>
@@ -19,6 +20,7 @@
 #define MAX_MSG_SIZE 5000
 #define MAX_CHUNK_SIZE 1000
 #define SLEEP_TIME 1
+#define MY_CLOSE_SLEEP 5
 #define POLL_TIMEOUT 1000
 
 // Structure for storing a linked list with front and rear pointers for the send and receive queues of a socket
