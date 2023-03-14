@@ -131,7 +131,7 @@ char *pop(queue_head *head, int *len){
 
 // Cleanup function for R
 void cleanup_R(void *arg){
-    printf("Cleaning R\n");
+    // printf("Cleaning R\n");
     // Free the Receive queue
     queue *temp = receive_queue->front->next;
     // int t=1;
@@ -144,11 +144,14 @@ void cleanup_R(void *arg){
     }
     free(receive_queue->front);
     free(receive_queue);
+    // Destroy mutex lock
+    pthread_mutex_destroy(&receive_mutex);
+
 }
 
 // Cleanup function for S
 void cleanup_S(void *arg){
-    printf("Cleaning S\n");
+    // printf("Cleaning S\n");
     // Free the Send queue
     queue *temp = send_queue->front->next;
     // int t=1;
@@ -161,6 +164,8 @@ void cleanup_S(void *arg){
     }
     free(send_queue->front);
     free(send_queue);
+    // Destroy mutex lock
+    pthread_mutex_destroy(&send_mutex);
 }
 
 // R Thread to wait on recv() call and put the message in the receive table
@@ -217,7 +222,7 @@ void *S(void *arg)
     pthread_cleanup_push(cleanup_S, NULL);
     while(1){
         //sleep for t time
-        sleep(SLEEP_TIME);
+        usleep(SLEEP_TIME);
         // usleep(SLEEP_TIME*1000);
         // Test Cancel
         pthread_testcancel();
@@ -278,6 +283,7 @@ int my_socket(int domain, int type, int protocol)
         perror("userSimulator::pthread_attr_init() failed");
         exit(0);
     }
+    pthread_attr_setdetachstate(&R_attr, PTHREAD_CREATE_DETACHED);
     if(pthread_create(&R_thread , &R_attr , R , NULL) < 0){
         perror("userSimulator::pthread_create() failed");
         exit(0);
@@ -286,6 +292,7 @@ int my_socket(int domain, int type, int protocol)
         perror("userSimulator::pthread_attr_init() failed");
         exit(0);
     }
+    pthread_attr_setdetachstate(&S_attr, PTHREAD_CREATE_DETACHED);
     if(pthread_create(&S_thread , &S_attr , S , NULL) < 0){
         perror("userSimulator::pthread_create() failed");
         exit(0);
@@ -303,27 +310,7 @@ int my_close(int sockfd)
         //kill R and S threads
         pthread_cancel(R_thread);
         pthread_cancel(S_thread);
-        pthread_join(R_thread, NULL);
-        pthread_join(S_thread, NULL);
-        // Destroy mutex locks
-        if(pthread_mutex_destroy(&send_mutex) < 0){
-            perror("userSimulator::pthread_mutex_destroy() failed");
-            exit(0);
-        }
-        if(pthread_mutex_destroy(&receive_mutex) < 0){
-            perror("userSimulator::pthread_mutex_destroy() failed");
-            exit(0);
-        }
-
-        // Destroy the attributes
-        if(pthread_attr_destroy(&R_attr) < 0){
-            perror("userSimulator::pthread_attr_destroy() failed");
-            exit(0);
-        }
-        if(pthread_attr_destroy(&S_attr) < 0){
-            perror("userSimulator::pthread_attr_destroy() failed");
-            exit(0);
-        }
+        // printf("R and S threads killed\n");
     }
     return close(sockfd);
 }
@@ -345,17 +332,24 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags){
 }
 ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
     if(my_type){
-        //put in receive table
-        int len=0;
-        // Gather receive_queue lock
-        pthread_mutex_lock(&receive_mutex);
-        char *s = pop(receive_queue, &len);
-        // Release receive_queue lock
-        pthread_mutex_unlock(&receive_mutex);
-        if(len==0 || s==NULL)  return 0;
-        memcpy(buf, s, len);
-        free(s);
-        return len;
+        while(1){
+            //put in receive table
+            int len=0;
+            // Gather receive_queue lock
+            pthread_mutex_lock(&receive_mutex);
+            char *s = pop(receive_queue, &len);
+            // Release receive_queue lock
+            pthread_mutex_unlock(&receive_mutex);
+            if(len==0 || s==NULL){
+                // printf("sleeping for %d microseconds\n", SLEEP_TIME);
+                usleep(SLEEP_TIME);
+                // printf("Done Sleeping\n");
+                continue;
+            }
+            memcpy(buf, s, len);
+            free(s);
+            return len;
+        }
     }
     else return recv(sockfd, buf, len, flags);
 }

@@ -13,6 +13,7 @@
         "stat.h": "c",
         "string.h": "c",
         "time.h": "c",
-        "poll.h": "c"
+        "poll.h": "c",
+        "in.h": "c"
     }
 }

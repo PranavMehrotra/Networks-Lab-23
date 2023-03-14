@@ -101,7 +101,6 @@ int main()
 		*/
 		int t=10,y=1;
 		while(t--){
-			sleep(1);
 			memset(buf, 0, 100);
 			y = my_recv(newsockfd, buf, 100, 0);
 			printf("Received from client: %s, Length: %d\n", buf, y);

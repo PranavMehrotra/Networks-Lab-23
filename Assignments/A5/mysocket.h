@@ -3,23 +3,19 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h> 
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <time.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <errno.h>
 #include <pthread.h>
 #include <poll.h>
+#include <unistd.h>
 
 #define SOCK_MyTCP 128
 #define MAX_MSG_SIZE 5000
 #define MAX_CHUNK_SIZE 1000
-#define SLEEP_TIME 1
+#define SLEEP_TIME 10000
 #define MY_CLOSE_SLEEP 5
 #define POLL_TIMEOUT 1000
 
