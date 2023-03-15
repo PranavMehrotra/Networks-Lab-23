@@ -58,10 +58,11 @@ int main()
 	   block when the server is not receiving and vice versa. For
 	   non-blocking modes, refer to the online man pages.
 	*/
-	int t=10,y;
+	int t=12,y;
 	while(t--){
 		strcpy(buf, "Hello World");
 		my_send(sockfd, buf, strlen(buf)+1, 0);
+		// printf("Iteration: %d\n", t);
 		y = my_recv(sockfd, buf, 100, 0);
 		buf[y] = '\0';
 		printf("Received from server: %s, Length: %d\n", buf, y);

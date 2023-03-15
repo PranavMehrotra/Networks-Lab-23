@@ -99,7 +99,7 @@ int main()
 		/* We initialize the buffer, copy the message to it,
 			and send the message to the client. 
 		*/
-		int t=10,y=1;
+		int t=12,y=1;
 		while(t--){
 			memset(buf, 0, 100);
 			y = my_recv(newsockfd, buf, 100, 0);

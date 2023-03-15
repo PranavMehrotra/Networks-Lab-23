@@ -18,6 +18,7 @@
 #define SLEEP_TIME 10000
 #define MY_CLOSE_SLEEP 5
 #define POLL_TIMEOUT 1000
+#define MAX_QUEUE_SIZE 10
 
 // Structure for storing a linked list with front and rear pointers for the send and receive queues of a socket
 typedef struct _queue
@@ -32,6 +33,8 @@ typedef struct _queue_head
 {
     queue *front;
     queue *rear;
+    int curr_size;
+    int max_size;
     /* 
     If front == rear, then the queue is empty
     One dummy node is always present in the queue at the beginning, so front and rear will never be NULL

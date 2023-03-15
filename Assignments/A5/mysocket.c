@@ -107,7 +107,9 @@ void send_expr(int newsockfd, char *expr, int size){
 
 
 // Push to the queue
-void push(queue_head *head, char *s, int len){
+int push(queue_head *head, char *s, int len){
+    if(!head)   return 1;
+    if(head->curr_size == head->max_size)  return 1;
     queue *new_node = (queue *)malloc(sizeof(queue));
     new_node->data = s;
     new_node->len = len;
@@ -115,16 +117,20 @@ void push(queue_head *head, char *s, int len){
     
     head->rear->next = new_node;
     head->rear = new_node;
+    head->curr_size++;
+    return 0;
 }
 
 // Pop from the queue
 char *pop(queue_head *head, int *len){
-    if(head->front == head->rear)  return NULL;
+    if(!head)   return NULL;
+    if(head->curr_size == 0)  return NULL;
     queue *temp = head->front->next;
     char *s = temp->data;
     *len = temp->len;
     head->front->next = temp->next;
     if(head->rear == temp)  head->rear = head->front;
+    head->curr_size--;
     free(temp);
     return s;
 }
@@ -198,15 +204,18 @@ void *R(void *arg)
             pthread_testcancel();
             continue;
         }
-        int len=0;
+        int len=0,ret=1;
         char *s = recieve_expr(temp_sockfd, &len);
         if(len==0)  continue;
-        // Gather receive_queue lock
-        pthread_mutex_lock(&receive_mutex);
-        //put in receive table
-        push(receive_queue, s, len);
-        // Release receive_queue lock
-        pthread_mutex_unlock(&receive_mutex);
+        while(ret){
+            // Gather receive_queue lock
+            pthread_mutex_lock(&receive_mutex);
+            //put in receive table
+            ret = push(receive_queue, s, len);
+            // Release receive_queue lock
+            pthread_mutex_unlock(&receive_mutex);
+            if(ret) usleep(SLEEP_TIME);
+        }
     }
     pthread_cleanup_pop(1);
     pthread_exit(0);
@@ -223,7 +232,6 @@ void *S(void *arg)
     while(1){
         //sleep for t time
         usleep(SLEEP_TIME);
-        // usleep(SLEEP_TIME*1000);
         // Test Cancel
         pthread_testcancel();
         if(curr_sockfd==-1) continue;
@@ -262,10 +270,14 @@ int my_socket(int domain, int type, int protocol)
     send_queue->front = (queue *)malloc(sizeof(queue));
     send_queue->front->next = NULL;
     send_queue->rear = send_queue->front;
+    send_queue->curr_size = 0;
+    send_queue->max_size = MAX_QUEUE_SIZE;
     receive_queue = (queue_head *)malloc(sizeof(queue_head));
     receive_queue->front = (queue *)malloc(sizeof(queue));
     receive_queue->front->next = NULL;
     receive_queue->rear = receive_queue->front;
+    receive_queue->curr_size = 0;
+    receive_queue->max_size = MAX_QUEUE_SIZE;
 
     // Intialise the mutex locks
     if(pthread_mutex_init(&send_mutex, NULL) < 0){
@@ -321,11 +333,15 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags){
         if(len<=0) return 0;
         char *s = (char *)malloc(sizeof(char)*len);
         memcpy(s, buf, len);
-        // Gather send_queue lock
-        pthread_mutex_lock(&send_mutex);
-        push(send_queue, s, len);
-        // Release send_queue lock
-        pthread_mutex_unlock(&send_mutex);
+        int ret=1;
+        while(ret){
+            // Gather send_queue lock
+            pthread_mutex_lock(&send_mutex);
+            ret = push(send_queue, s, len);
+            // Release send_queue lock
+            pthread_mutex_unlock(&send_mutex);
+            if(ret) usleep(SLEEP_TIME);
+        }
         return len;
     }
     else return send(sockfd, buf, len, flags);
