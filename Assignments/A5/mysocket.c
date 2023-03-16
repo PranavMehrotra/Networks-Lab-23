@@ -350,13 +350,13 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
     if(my_type){
         while(1){
             //put in receive table
-            int len=0;
+            int siz=0;
             // Gather receive_queue lock
             pthread_mutex_lock(&receive_mutex);
-            char *s = pop(receive_queue, &len);
+            char *s = pop(receive_queue, &siz);
             // Release receive_queue lock
             pthread_mutex_unlock(&receive_mutex);
-            if(len==0 || s==NULL){
+            if(siz==0 || s==NULL){
                 // printf("sleeping for %d microseconds\n", SLEEP_TIME);
                 usleep(SLEEP_TIME);
                 // printf("Done Sleeping\n");
