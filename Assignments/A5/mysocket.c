@@ -1,12 +1,19 @@
 #include "mysocket.h"
 
-// Global variables of queue
+//gloabl send queue
 queue_head *send_queue;
+
+//global recieve queue
 queue_head *receive_queue;
-int my_type=0;
-int curr_sockfd=-1;
+
+int my_type=0;          //if 1 then socket is of type My_TCP
+int curr_sockfd=-1;     //current socket fd will be stored and passed to different functions
+
+//thread declaration
 pthread_t R_thread;
 pthread_t S_thread;
+
+//thread's attribute declaration
 pthread_attr_t R_attr;
 pthread_attr_t S_attr;
 
@@ -16,31 +23,37 @@ pthread_mutex_t receive_mutex;
 
 int my_bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
+    //wrapper around bind call
     return bind(sockfd, addr, addrlen);
 }
 
 int my_listen(int sockfd, int backlog)
 {
+    //wrapper around listen call
     return listen(sockfd, backlog);
 }
 
 int my_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
 {
+    //current socket fd updated and connect called
     curr_sockfd = sockfd;
     return connect(sockfd,addr,addrlen);
 }
 
 int my_accept(int sockfd, struct sockaddr *restrict addr, socklen_t *restrict addrlen)
 {
+    //current socket fd updated and accept called
     return curr_sockfd = accept(sockfd, addr, addrlen);
 }
 
 
 // Helper functions
+//the function will recieve 4 bytes i.e. one integer using recv call
 int recv_num(int newsockfd){
     char num[10];
     int ans;
     int y,len=0,siz=sizeof(int);
+    //till 4 bytes are recieved, keep reciveing in chunks
     while((siz>len) && ((y=recv(newsockfd,num+len,siz-len,0))>0)){
         len+=y;
         if(len==siz){
@@ -53,15 +66,21 @@ int recv_num(int newsockfd){
 }
 
 int min(int a,int b){
+    //returns the minimum of a and b
     return (a<b)?a:b;
 }
 
 //receive an expression/string in chunks
 char *recieve_expr(int newsockfd, int *len_recieved){
 	char *s;
+
+    //the first 4 bytes of all messages sent using my_send would be reserved for the length of message.
+    //store the length of the message in recv_size
 	int len=0,size = 2*MAX_CHUNK_SIZE,y,chunk=MAX_CHUNK_SIZE,recv_size = recv_num(newsockfd);
+    
     s = (char *)malloc(sizeof(char)*size);
 	if(!s)	return NULL;
+    
     //keep on receiving characters in chunks and store them in buffer
 	while((recv_size > len) && ((y=recv(newsockfd,s+len,min(recv_size-len,chunk),0))>0)){
         len+=y;
@@ -87,9 +106,12 @@ char *recieve_expr(int newsockfd, int *len_recieved){
 //send expression in chunks
 void send_expr(int newsockfd, char *expr, int size){
 	int len=0,y,chunk=MAX_CHUNK_SIZE;
+    
     // Send the size of the message
     send(newsockfd,&size,sizeof(int),0);
-	if(size<chunk){
+	
+    //send the rest of message i.e. expr in chunks
+    if(size<chunk){
         //if the size to be sent is less than chunk size send the entire message
 		send(newsockfd,expr,size,0);
 		return;
@@ -107,14 +129,22 @@ void send_expr(int newsockfd, char *expr, int size){
 
 
 // Push to the queue
+//function returns 0 on succesful push and 1 in cas of failure.
 int push(queue_head *head, char *s, int len){
+
+    //if head is null
     if(!head)   return 1;
+
+    //if the queue is full
     if(head->curr_size == head->max_size)  return 1;
+
+    //create a new node and update pointers
     queue *new_node = (queue *)malloc(sizeof(queue));
     new_node->data = s;
     new_node->len = len;
     new_node->next = NULL;
     
+    //the new node is added to the rear
     head->rear->next = new_node;
     head->rear = new_node;
     head->curr_size++;
@@ -122,13 +152,21 @@ int push(queue_head *head, char *s, int len){
 }
 
 // Pop from the queue
+//the function returns the message on successful pop and NULL in case of failure
 char *pop(queue_head *head, int *len){
+
+    //if head is null
     if(!head)   return NULL;
+
+    //if the queue is empty
     if(head->curr_size == 0)  return NULL;
+
+    //the node from front is popped and pointers are updated
     queue *temp = head->front->next;
     char *s = temp->data;
     *len = temp->len;
     head->front->next = temp->next;
+
     if(head->rear == temp)  head->rear = head->front;
     head->curr_size--;
     free(temp);
@@ -362,7 +400,7 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
                 // printf("Done Sleeping\n");
                 continue;
             }
-            memcpy(buf, s, len);
+            memcpy(buf, s, min(siz,len));
             free(s);
             return min(siz,len);
         }
