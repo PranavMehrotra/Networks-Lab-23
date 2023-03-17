@@ -6,7 +6,7 @@ queue_head *send_queue;
 //global recieve queue
 queue_head *receive_queue;
 
-int my_type=0;          //if 1 then socket is of type My_TCP
+int my_type=0;          //if 1 then socket is of type SOCK_MyTCP
 int curr_sockfd=-1;     //current socket fd will be stored and passed to different functions
 
 //thread declaration
