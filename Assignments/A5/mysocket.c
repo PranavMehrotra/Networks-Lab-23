@@ -362,7 +362,7 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
                 // printf("Done Sleeping\n");
                 continue;
             }
-            memcpy(buf, s, len);
+            memcpy(buf, s, min(siz,len));
             free(s);
             return min(siz,len);
         }
