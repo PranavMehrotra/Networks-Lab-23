@@ -108,7 +108,8 @@ int main()
 			timeinfo = localtime ( &rawtime );
 
 			strcpy(buf, asctime(timeinfo));
-			my_send(newsockfd, buf, strlen(buf) - 1, 0);
+			buf[strlen(buf) - 1] = '\0';
+			my_send(newsockfd, buf, strlen(buf)+1, 0);
 		}
 		my_close(newsockfd);
 

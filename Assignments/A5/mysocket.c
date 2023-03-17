@@ -364,7 +364,7 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
             }
             memcpy(buf, s, len);
             free(s);
-            return len;
+            return min(siz,len);
         }
     }
     else return recv(sockfd, buf, len, flags);
