@@ -129,7 +129,7 @@ void send_expr(int newsockfd, char *expr, int size){
 
 
 // Push to the queue
-//function returns 0 on succesful push and 1 in cas of failure.
+//function returns 0 on succesful push and 1 in case of failure.
 int push(queue_head *head, char *s, int len){
 
     //if head is null
@@ -176,6 +176,7 @@ char *pop(queue_head *head, int *len){
 // Cleanup function for R
 void cleanup_R(void *arg){
     // printf("Cleaning R\n");
+    
     // Free the Receive queue
     queue *temp = receive_queue->front->next;
     // int t=1;
@@ -188,6 +189,7 @@ void cleanup_R(void *arg){
     }
     free(receive_queue->front);
     free(receive_queue);
+    
     // Destroy mutex lock
     pthread_mutex_destroy(&receive_mutex);
 
@@ -196,6 +198,7 @@ void cleanup_R(void *arg){
 // Cleanup function for S
 void cleanup_S(void *arg){
     // printf("Cleaning S\n");
+    
     // Free the Send queue
     queue *temp = send_queue->front->next;
     // int t=1;
@@ -208,6 +211,7 @@ void cleanup_S(void *arg){
     }
     free(send_queue->front);
     free(send_queue);
+    
     // Destroy mutex lock
     pthread_mutex_destroy(&send_mutex);
 }
@@ -217,18 +221,23 @@ void *R(void *arg)
 {
     // Register the cleanup function
     pthread_cleanup_push(cleanup_R, NULL);
-    // Poll Structure
+    
+    // Poll Structure 
     struct pollfd fdset[1];
+    
+    //check for incoming message
     int timeout=POLL_TIMEOUT,ret,temp_sockfd;
     while(1){
         temp_sockfd = curr_sockfd;
         if(temp_sockfd==-1){
+
             // Test Cancel
             pthread_testcancel();
             continue;
         }
         fdset[0].fd = temp_sockfd;
         fdset[0].events = POLLIN;
+        
         // Poll for message with timeout 1 sec
         ret = poll(fdset,1,timeout);
 		if(ret<0){
@@ -242,10 +251,14 @@ void *R(void *arg)
             pthread_testcancel();
             continue;
         }
+        //recieve teh incoming message
         int len=0,ret=1;
         char *s = recieve_expr(temp_sockfd, &len);
         if(len==0)  continue;
+        
+        //try pushing the message to the table, else sleep and repeat
         while(ret){
+
             // Gather receive_queue lock
             pthread_mutex_lock(&receive_mutex);
             //put in receive table
@@ -267,9 +280,11 @@ void *S(void *arg)
 {
     // Register the cleanup function
     pthread_cleanup_push(cleanup_S, NULL);
+
     while(1){
         //sleep for t time
         usleep(SLEEP_TIME);
+    
         // Test Cancel
         pthread_testcancel();
         if(curr_sockfd==-1) continue;
@@ -358,6 +373,8 @@ int my_close(int sockfd)
         my_type = 0;
         curr_sockfd = -1;
         //kill R and S threads
+
+        //pthread_cancel will call corresponding cleanup function before killing
         pthread_cancel(R_thread);
         pthread_cancel(S_thread);
         // printf("R and S threads killed\n");
