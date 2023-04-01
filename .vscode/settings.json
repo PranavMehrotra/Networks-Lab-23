@@ -14,7 +14,6 @@
         "string.h": "c",
         "time.h": "c",
         "poll.h": "c",
-        "in.h": "c",
-        "socket.h": "c"
+        "in.h": "c"
     }
 }
