@@ -20,9 +20,9 @@ void print_ip_header(unsigned char *buf){
     printf("  Source: %s\n", inet_ntoa(*(struct in_addr *)&ip_hdr->saddr));
     printf("  Destination: %s\n", inet_ntoa(*(struct in_addr *)&ip_hdr->daddr));
     printf("  Header length: %d\n", ip_hdr->ihl);
-    printf("  Total length: %d\n", ip_hdr->tot_len);
+    printf("  Total length: %d\n", ntohs(ip_hdr->tot_len));
     printf("  TTL: %d\n", ip_hdr->ttl);
-    printf("  ID: %d\n", ip_hdr->id);
+    printf("  ID: %d\n", ntohs(ip_hdr->id));
     printf("  Protocol: %d\n", ip_hdr->protocol);
     printf("  Fragment offset: %d\n", ip_hdr->frag_off);
 }
@@ -78,7 +78,10 @@ int main(){
 
         printf("Payload:\n");
         for (int i = (sizeof(struct iphdr) + sizeof(struct icmphdr)); i < n; i++) {
-            printf("%c ", (unsigned char)buf[i]);
+            printf("%02x ", (unsigned char)buf[i]);
+            if (i % 16 == 4) {
+                printf("\n");
+            }
         }
         // printf("Payload:\n");
 
