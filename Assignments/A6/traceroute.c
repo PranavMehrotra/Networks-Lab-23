@@ -10,14 +10,19 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <time.h>
 #include <netdb.h>
 #include <ifaddrs.h>
 
-#define PACKET_SIZE 56
+#define PACKET_SIZE 28
+#define MAX_RECV_SIZE 128
 #define ICMP_HDR_SIZE 8
 #define IP_HDR_SIZE 20
-#define MAX_HOPS 10
+#define MAX_HOPS 15
 #define START_ASCII 72
+#define NUM_PING_TRY 5
+#define TIME_IN_MICRO 1
+#define TIME_IN_MILLI 0
 
 
 unsigned short in_cksum(unsigned short *addr, int len) {
@@ -51,11 +56,33 @@ void print_ip_header(unsigned char *buf){
 }
 
 void print_icmp_header(unsigned char *buf){
-    struct icmphdr *icmp_hdr = (struct icmphdr *)(buf + sizeof(struct iphdr));
+    struct icmphdr *icmp_hdr = (struct icmphdr *)(buf);
     printf("ICMP header:\n");
     printf("  Type: %d\n", icmp_hdr->type);
     printf("  Code: %d\n", icmp_hdr->code);
+    printf("  ID: %d\n", ntohs(icmp_hdr->un.echo.id));
+    printf("  Sequence: %d\n", ntohs(icmp_hdr->un.echo.sequence));
     printf("  Checksum: %d\n", icmp_hdr->checksum);
+}
+
+void print_payload(unsigned char *buf, int len) {
+    int i;
+    printf("Payload:\n");
+    printf("Length: %d bytes\n", len);
+    for (i = 0; i < len; i++) {
+        printf("%02x ", buf[i]);
+        if(i%8==7) printf("\n");
+    }
+    printf("\n\n");
+}
+
+// Function to get difference between two timespecs in micro or milli seconds, as specified by the flag
+double get_time_diff(struct timespec *start, struct timespec *end, int flag) {
+    double diff = (end->tv_sec - start->tv_sec) * 1000000 + ((double)end->tv_nsec - start->tv_nsec) / 1000.0;
+    if (flag == TIME_IN_MILLI) {
+        diff /= 1000.0;
+    }
+    return diff;
 }
 
 // Function to return the IP address of the machine
@@ -96,6 +123,11 @@ char *get_ip_addr() {
     return NULL;
 }
 
+// Function to return the minimum of two numbers
+double min(double a, double b) {
+    return ((a < b)? a : b);
+}
+
 // Function to add sequential binary numbers to the ICMP payload, given the starting number and the number of bytes to add
 void add_seq_nums(unsigned char *buf, int start, int num_bytes) {
     int i;
@@ -120,10 +152,6 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     bcopy((char *)server->h_addr, (char *)&dest_ip.s_addr, server->h_length);
-    // if (inet_pton(AF_INET, dest_ip_str, &dest_ip) != 1) {
-    //     printf("Invalid destination IP: %s\n", dest_ip_str);
-    //     return 1;
-    // }
     
     int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sockfd < 0) {
@@ -133,11 +161,15 @@ int main(int argc, char *argv[]) {
     
     // Set the TTL value for the socket
     int ttl = 1;
-    // if (setsockopt(sockfd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) != 0) {
-    //     printf("Error setting TTL value: %s\n", strerror(errno));
-    //     return 1;
-    // }
+    char recv_buf[MAX_RECV_SIZE];
+    struct sockaddr_in recv_addr;
+    socklen_t recv_addr_len = sizeof(recv_addr);
+    char router_ip_str[INET_ADDRSTRLEN];
+    int recv_len;
     
+    struct timespec tot_start, tot_end, start, end;
+    double tot_time_taken = 0.0, time_taken = 0.0, min_time_taken = 1e15;
+
     // Set the socket timeout to 1 second
     struct timeval timeout;
     timeout.tv_sec = 1;
@@ -148,11 +180,11 @@ int main(int argc, char *argv[]) {
     }
 
     // Set socket to not attach the IP header
-    int one = 1;
-    if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) != 0) {
-        printf("Error setting socket option: %s\n", strerror(errno));
-        return 1;
-    }
+    // int one = 1;
+    // if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) != 0) {
+    //     printf("Error setting socket option: %s\n", strerror(errno));
+    //     return 1;
+    // }
     
     // Initialize the destination address structure
     struct sockaddr_in dest_addr;
@@ -162,111 +194,103 @@ int main(int argc, char *argv[]) {
     
     // Initialize the packet
     char packet[PACKET_SIZE];
-    struct iphdr *ip_packet = (struct iphdr *)packet;
-    ip_packet->version = 4;
-    ip_packet->ihl = 5;
-    ip_packet->tos = 0;
-    ip_packet->tot_len = htons(PACKET_SIZE);
-    ip_packet->id = 0;
-    ip_packet->frag_off = 0;
-    ip_packet->ttl = 1;
-    ip_packet->protocol = IPPROTO_ICMP;
-    ip_packet->check = 0;
-    char *host = get_ip_addr();
-    ip_packet->saddr = inet_addr(host);
-    free(host);
-    ip_packet->daddr = dest_ip.s_addr;
-    ip_packet->check = in_cksum((unsigned short *)ip_packet, IP_HDR_SIZE);
+    // struct iphdr *ip_packet = (struct iphdr *)packet;
+    // ip_packet->version = 4;
+    // ip_packet->ihl = 5;
+    // ip_packet->tos = 0;
+    // ip_packet->tot_len = htons(PACKET_SIZE);
+    // ip_packet->id = 0;
+    // ip_packet->frag_off = 0;
+    // ip_packet->ttl = 1;
+    // ip_packet->protocol = IPPROTO_ICMP;
+    // ip_packet->check = 0;
+    // char *host = get_ip_addr();
+    // ip_packet->saddr = inet_addr(host);
+    // free(host);
+    // ip_packet->daddr = dest_ip.s_addr;
+    // ip_packet->check = in_cksum((unsigned short *)ip_packet, IP_HDR_SIZE);
 
-    print_ip_header(packet);
+    // print_ip_header(packet);
 
-
-
-    struct icmphdr *icmp_packet = (struct icmphdr *)(packet + IP_HDR_SIZE);
+    // struct icmphdr *icmp_packet = (struct icmphdr *)(packet + IP_HDR_SIZE);
+    struct icmphdr *icmp_packet = (struct icmphdr *)(packet);
     icmp_packet->type = ICMP_ECHO;
     icmp_packet->code = 0;
+    icmp_packet->un.echo.id = htons(getpid());
+    icmp_packet->un.echo.sequence = 0;
 
     print_icmp_header(packet);
 
-    add_seq_nums(packet + IP_HDR_SIZE + ICMP_HDR_SIZE, START_ASCII, PACKET_SIZE - IP_HDR_SIZE - ICMP_HDR_SIZE);
+    add_seq_nums(packet + ICMP_HDR_SIZE, START_ASCII, PACKET_SIZE - ICMP_HDR_SIZE);
 
-    printf("Payload:\n");
-        for (int i = (sizeof(struct iphdr) + sizeof(struct icmphdr)); i < PACKET_SIZE; i++) {
-            printf("%02x ", (unsigned char)packet[i]);
-            if (i % 16 == 7) {
-                printf("\n");
-            }
-        }
-        printf("\n\n");
+    print_payload(packet + ICMP_HDR_SIZE, PACKET_SIZE - ICMP_HDR_SIZE);
+
+    // Calculate the checksum for the ICMP packet
+    icmp_packet->checksum = 0;
+    icmp_packet->checksum = in_cksum((unsigned short *)icmp_packet, PACKET_SIZE);
+
+    clock_gettime(CLOCK_MONOTONIC, &tot_start);
 
     printf("traceroute to %s (%s), %d hops max, %d byte packets\n", server->h_name, inet_ntoa(dest_ip), MAX_HOPS, PACKET_SIZE);
-
+    int done=0;
     // Loop through the TTL values
     for (ttl = 1; ttl <= MAX_HOPS; ttl++) {
         // Set the TTL value for the socket
-        // if (setsockopt(sockfd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) != 0) {
-        //     printf("Error setting TTL value: %s\n", strerror(errno));
-        //     return 1;
-        // }
-        ip_packet->ttl = ttl;
-        ip_packet->id = htons(ttl);
-        ip_packet->check = 0;
-        ip_packet->check = in_cksum((unsigned short *)ip_packet, IP_HDR_SIZE);
-        
-        // Calculate the checksum for the ICMP packet
-        icmp_packet->checksum = 0;
-        icmp_packet->checksum = in_cksum((unsigned short *)icmp_packet, ICMP_HDR_SIZE);
-        
-        printf("%d ", ttl);
-
-        // Send the ICMP packet to the destination
-        if (sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) <= 0) {
-            printf("Error sending packet: %s\n", strerror(errno));
+        if (setsockopt(sockfd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) != 0) {
+            printf("Error setting TTL value: %s\n", strerror(errno));
             return 1;
         }
-        
-        // Receive the response from the router
-        char recv_buf[PACKET_SIZE+1];
-        struct sockaddr_in recv_addr;
-        socklen_t recv_addr_len = sizeof(recv_addr);
-        int recv_len;
-        if ((recv_len = recvfrom(sockfd, recv_buf, PACKET_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addr_len)) <= 0) {
-            printf("**\n");
-            continue;
-        }
-        
-        // Print the IP address of the router that responded
-        char router_ip_str[INET_ADDRSTRLEN];
-        if (inet_ntop(AF_INET, &recv_addr.sin_addr, router_ip_str, INET_ADDRSTRLEN) == NULL) {
-            printf("*\n");
-            continue;
-        }
-        printf("%s ", router_ip_str);
-        
-        // Check if the response is an ICMP echo reply
-        struct iphdr *ip_header = (struct iphdr *)recv_buf;
-        struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
-        // printf("\n");
-        print_ip_header(recv_buf);
-        print_icmp_header(recv_buf);
-        printf("Payload:\n");
-        for (int i = (sizeof(struct iphdr) + sizeof(struct icmphdr)); i < recv_len; i++) {
-            printf("%02x ", (unsigned char)recv_buf[i]);
-            if (i % 16 == 7) {
-                printf("\n");
+        min_time_taken = 1e15;
+        // ip_packet->ttl = ttl;
+        // ip_packet->id = htons(ttl);
+        // ip_packet->check = 0;
+        // ip_packet->check = in_cksum((unsigned short *)ip_packet, IP_HDR_SIZE);
+        int is_first = 1;
+        printf("%d ", ttl);
+        for(int i=0;i<NUM_PING_TRY;i++){
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            // Send the ICMP packet to the destination
+            if (sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) <= 0) {
+                printf("Error sending packet: %s\n", strerror(errno));
+                return 1;
             }
+            
+            // Receive the response from the router
+            if ((recv_len = recvfrom(sockfd, recv_buf, MAX_RECV_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addr_len)) <= 0) {
+                printf("**\n");
+                continue;
+            }
+            clock_gettime(CLOCK_MONOTONIC, &end);
+            time_taken = get_time_diff(&start, &end, TIME_IN_MICRO);
+            min_time_taken = min(time_taken, min_time_taken);
+            // Print the IP address of the router that responded
+            if (inet_ntop(AF_INET, &recv_addr.sin_addr, router_ip_str, INET_ADDRSTRLEN) == NULL) {
+                printf("Invalid Source IP address\n");
+                continue;
+            }
+            if(is_first){
+                is_first = 0;
+                printf("%s \t", router_ip_str);
+            }
+            else{
+                printf("\t");
+            }
+            
+            // Check if the response is an ICMP echo reply
+            struct iphdr *ip_header = (struct iphdr *)recv_buf;
+            struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
+            // printf("\n");
+            // print_ip_header(recv_buf);
+            // print_icmp_header(recv_buf + IP_HDR_SIZE);
+            // print_payload(recv_buf + IP_HDR_SIZE + ICMP_HDR_SIZE, recv_len - IP_HDR_SIZE - ICMP_HDR_SIZE);
+            if (icmp_reply->type == ICMP_ECHOREPLY || ip_header->saddr == dest_ip.s_addr) {
+                done=1;
+            }
+            printf("%.3lf us", time_taken);
         }
-        printf("\n\n");
-        if (icmp_reply->type == ICMP_ECHOREPLY) {
-            printf("Done\n");
-            break;
-        }
-        if(ip_header->saddr == dest_ip.s_addr){
-            printf("Done 2\n");
-            break;
-        }
-        
-        // printf("\n");
+        printf("\n");
+        // printf("Minimum Ping of the Node: %.3lf us\n", min_time_taken);
+        if(done)    break;
     }
 
     // Close the socket
