@@ -18,7 +18,7 @@
 #define MAX_RECV_SIZE 128
 #define ICMP_HDR_SIZE 8
 #define IP_HDR_SIZE 20
-#define MAX_HOPS 15
+#define MAX_HOPS 30
 #define START_ASCII 72
 #define NUM_PING_TRY 5
 #define TIME_IN_MICRO 1
@@ -128,6 +128,11 @@ double min(double a, double b) {
     return ((a < b)? a : b);
 }
 
+// Function to return the maximum of two numbers
+double max(double a, double b) {
+    return ((a > b)? a : b);
+}
+
 // Function to add sequential binary numbers to the ICMP payload, given the starting number and the number of bytes to add
 void add_seq_nums(unsigned char *buf, int start, int num_bytes) {
     int i;
@@ -169,6 +174,8 @@ int main(int argc, char *argv[]) {
     
     struct timespec tot_start, tot_end, start, end;
     double tot_time_taken = 0.0, time_taken = 0.0, min_time_taken = 1e15;
+    double latencies[MAX_HOPS+1];
+    latencies[0] = 0.0;
 
     // Set the socket timeout to 1 second
     struct timeval timeout;
@@ -257,7 +264,7 @@ int main(int argc, char *argv[]) {
             
             // Receive the response from the router
             if ((recv_len = recvfrom(sockfd, recv_buf, MAX_RECV_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addr_len)) <= 0) {
-                printf("**\n");
+                printf("*\t");
                 continue;
             }
             clock_gettime(CLOCK_MONOTONIC, &end);
@@ -288,8 +295,9 @@ int main(int argc, char *argv[]) {
             }
             printf("%.3lf us", time_taken);
         }
+        latencies[ttl] = min_time_taken;
         printf("\n");
-        // printf("Minimum Ping of the Node: %.3lf us\n", min_time_taken);
+        printf("Latency of the Link: %.3lf us\n", min_time_taken - latencies[ttl-1]); //## Change to max(0, min_time_taken - latencies[ttl-1])
         if(done)    break;
     }
 
