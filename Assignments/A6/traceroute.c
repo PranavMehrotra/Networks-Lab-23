@@ -154,7 +154,7 @@ void add_seq_chars(unsigned char *buf, int num_bytes) {
     }
 }
 
-void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct in_addr* dest_ip, char *next_hop){
+void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct in_addr* dest_ip, char *next_hop, int time_unit){
     char recv_buf[MAX_RECV_SIZE];
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
@@ -163,8 +163,9 @@ void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct 
     printf("Sending %d ICMP packets each %d second apart to finalise the next hop\n",NUM_PING_TRY,(ROUTE_PROBE_TIME/1000000));
     struct timespec start, end;
     int sleep_time_in_micro = ROUTE_PROBE_TIME;
-    long diff=0;
+    double diff=0;
     memset(next_hop, 0, INET_ADDRSTRLEN);
+    printf("RTT: \t");
     for(int i=0;i<NUM_PING_TRY;i++){
         clock_gettime(CLOCK_MONOTONIC, &start);
         // Send the ICMP packet to the destination
@@ -181,19 +182,22 @@ void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct 
             continue;
         }
         clock_gettime(CLOCK_MONOTONIC, &end);
-        diff = get_time_diff(&start, &end, TIME_IN_MICRO);
+        diff = get_time_diff(&start, &end, time_unit);
         // Print the IP address of the router that responded
         if (inet_ntop(AF_INET, &recv_addr.sin_addr, next_router, INET_ADDRSTRLEN) == NULL) {
             printf("Invalid Source IP address\n");
             continue;
         }
-        printf("%s\t",next_router);
+        if(time_unit == TIME_IN_MICRO)
+            printf("%.3lf us\t", diff);
+        else
+            printf("%.3lf ms\t", diff);
         fflush(stdout);
         strcpy(next_hop,next_router);
         
-        if(diff<sleep_time_in_micro && i!=NUM_PING_TRY-1){
-            // printf("Sleeping for %ld microseconds\n",sleep_time_in_micro-diff);
-            usleep(sleep_time_in_micro-diff);
+        if(((long)diff)<sleep_time_in_micro && i!=NUM_PING_TRY-1){
+            // printf("Sleeping for %ld microseconds\n",sleep_time_in_micro-(long)diff);
+            usleep(sleep_time_in_micro-(long)diff);
         }
     }
     printf("\nNext hop is %s\n",next_hop);
@@ -208,7 +212,7 @@ void calc_latency(int sockfd, char* packet,struct sockaddr_in* next_addr, int tt
     socklen_t recv_addr_len = sizeof(recv_addr);
     int recv_len;
     double time_taken=0,min_time_taken=LATENCY_NA;
-
+    printf("RTT: \t");
     for(int i=0;i<n;i++){
         clock_gettime(CLOCK_MONOTONIC, &start);
         // Send the ICMP packet to the destination
@@ -249,9 +253,9 @@ void calc_latency(int sockfd, char* packet,struct sockaddr_in* next_addr, int tt
     printf("\n");
     if(latencies[ttl-1] < LATENCY_NA && min_time_taken < LATENCY_NA){
         if(time_unit == TIME_IN_MICRO)
-            printf("Latency of the Link: %.3lf us\n", min_time_taken - latencies[ttl-1]);
+            printf("Latency of the Link: %.3lf us\n", (min_time_taken - latencies[ttl-1])/2.0);
         else
-            printf("Latency of the Link: %.3lf ms\n", min_time_taken - latencies[ttl-1]);
+            printf("Latency of the Link: %.3lf ms\n", (min_time_taken - latencies[ttl-1])/2.0);
     }
         
     else
@@ -267,7 +271,7 @@ void calc_bandwidth(int sockfd, char* data_packet,struct sockaddr_in* next_addr,
     socklen_t recv_addr_len = sizeof(recv_addr);
     int recv_len;
     double time_taken=0,min_time_taken=LATENCY_NA;
-
+    printf("RTT: \t");
     for(int i=0;i<n;i++){
         clock_gettime(CLOCK_MONOTONIC, &start);
         // Send the ICMP packet to the destination
@@ -315,6 +319,7 @@ void calc_bandwidth(int sockfd, char* data_packet,struct sockaddr_in* next_addr,
         double _time_taken = min_time_taken - data_latencies[ttl-1];
         _time_taken -= (latencies[ttl] - latencies[ttl-1]);
         if(_time_taken != 0){
+            _time_taken /= 2.0;
             if(time_unit == TIME_IN_MICRO)
                 printf("Bandwidth of the Link: %.3lf Mbps\n", ((double)DATA_PACKET_SIZE*8)/(_time_taken));
             else
@@ -350,13 +355,24 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    int n,t;
+    int n,t,time_unit;
+    char c[20];
     printf("Enter the number of probes to be sent per link for finding latency and bandwidth: ");
     scanf("%d",&n);
     printf("Enter how many seconds apart each probe should be sent: ");
     scanf("%d",&t);
-
-
+    fflush(stdin);
+    printf("Do you want to calculate latency and bandwidth in microseconds or milliseconds? (u/m): ");
+    scanf("%s",c);
+    fflush(stdin);
+    if(c[0]=='u' || c[0]=='U')
+        time_unit = TIME_IN_MICRO;
+    else if(c[0]=='m' || c[0]=='M')
+        time_unit = TIME_IN_MILLI;
+    else{
+        printf("Invalid choice, defaulting to milliseconds\n");
+        time_unit = TIME_IN_MILLI;
+    }
     // Set the TTL value for the socket
     int ttl = 1;
     char recv_buf[MAX_RECV_SIZE];
@@ -461,10 +477,10 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         min_time_taken = LATENCY_NA;
-
+        printf("----------------------------------------------\n");
         printf("%d.\n", ttl);
         char next_hop[INET_ADDRSTRLEN];
-        get_next_hop(sockfd, packet, &dest_addr, &dest_ip, next_hop);
+        get_next_hop(sockfd, packet, &dest_addr, &dest_ip, next_hop, time_unit);
         if(strcmp(next_hop,"0.0.0.0")==0){
             printf("Next Hop could not be found\n");
             printf("Hence, Latency and Bandwidth cannot be calculated\n");
@@ -487,11 +503,11 @@ int main(int argc, char *argv[]) {
 
         printf("Sending %d ICMP packets each %d seconds apart to calculate latencies\n",n,t);
 
-        calc_latency(sockfd, packet, &next_addr, ttl, latencies, n, sleep_time_in_micro, TIME_IN_MICRO);
+        calc_latency(sockfd, packet, &next_addr, ttl, latencies, n, sleep_time_in_micro, time_unit);
 
         printf("Sending %d ICMP packets each %d seconds apart to calculate bandwidth\n",n,t);
 
-        calc_bandwidth(sockfd, data_packet, &next_addr, ttl, latencies, data_latencies, n, sleep_time_in_micro, TIME_IN_MICRO);
+        calc_bandwidth(sockfd, data_packet, &next_addr, ttl, latencies, data_latencies, n, sleep_time_in_micro, time_unit);
         if(done){
             printf("Destination Reached\n");
             break;
