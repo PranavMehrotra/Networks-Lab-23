@@ -30,6 +30,8 @@
 
 const int MAX_HOPS = 30;
 
+char out_file[200];
+FILE *fp;
 
 unsigned short in_cksum(unsigned short *addr, int len) {
     unsigned int sum = 0;
@@ -48,38 +50,48 @@ unsigned short in_cksum(unsigned short *addr, int len) {
 
 void print_ip_header(unsigned char *buf){
     struct iphdr *ip_hdr = (struct iphdr *)buf;
-    printf("IP header:\n");
-    printf("  Check: %d\n", ip_hdr->check);
-    printf("  Version: %d\n", ip_hdr->version);
-    printf("  Source: %s\n", inet_ntoa(*(struct in_addr *)&ip_hdr->saddr));
-    printf("  Destination: %s\n", inet_ntoa(*(struct in_addr *)&ip_hdr->daddr));
-    printf("  Header length: %d\n", ip_hdr->ihl);
-    printf("  Total length: %d\n", ntohs(ip_hdr->tot_len));
-    printf("  TTL: %d\n", ip_hdr->ttl);
-    printf("  ID: %d\n", ntohs(ip_hdr->id));
-    printf("  Protocol: %d\n", ip_hdr->protocol);
-    printf("  Fragment offset: %d\n", ip_hdr->frag_off);
+    fprintf(fp, "IP header:\n");
+    fprintf(fp, "  Checksum: %d\n", ip_hdr->check);
+    fprintf(fp, "  Version: %d\n", ip_hdr->version);
+    fprintf(fp, "  Source: %s\n", inet_ntoa(*(struct in_addr *)&ip_hdr->saddr));
+    fprintf(fp, "  Destination: %s\n", inet_ntoa(*(struct in_addr *)&ip_hdr->daddr));
+    fprintf(fp, "  Header length: %d\n", ip_hdr->ihl);
+    fprintf(fp, "  Total length: %d\n", ntohs(ip_hdr->tot_len));
+    fprintf(fp, "  TTL: %d\n", ip_hdr->ttl);
+    fprintf(fp, "  ID: %d\n", ntohs(ip_hdr->id));
+    if(ip_hdr->protocol == IPPROTO_TCP)
+        fprintf(fp, "  Protocol: TCP\n");
+    else if(ip_hdr->protocol == IPPROTO_UDP)
+        fprintf(fp, "  Protocol: UDP\n");
+    else if(ip_hdr->protocol == IPPROTO_ICMP)
+        fprintf(fp, "  Protocol: ICMP\n");
+    else
+        fprintf(fp, "  Protocol: Unknown Protocol\n");
+    fprintf(fp, "  Fragment offset: %d\n", ip_hdr->frag_off);
+    fflush(fp);
 }
 
 void print_icmp_header(unsigned char *buf){
     struct icmphdr *icmp_hdr = (struct icmphdr *)(buf);
-    printf("ICMP header:\n");
-    printf("  Type: %d\n", icmp_hdr->type);
-    printf("  Code: %d\n", icmp_hdr->code);
-    printf("  ID: %d\n", ntohs(icmp_hdr->un.echo.id));
-    printf("  Sequence: %d\n", ntohs(icmp_hdr->un.echo.sequence));
-    printf("  Checksum: %d\n", icmp_hdr->checksum);
+    fprintf(fp, "ICMP header:\n");
+    fprintf(fp, "  Type: %d\n", icmp_hdr->type);
+    fprintf(fp, "  Code: %d\n", icmp_hdr->code);
+    fprintf(fp, "  ID: %d\n", ntohs(icmp_hdr->un.echo.id));
+    fprintf(fp, "  Sequence: %d\n", ntohs(icmp_hdr->un.echo.sequence));
+    fprintf(fp, "  Checksum: %d\n", icmp_hdr->checksum);
+    fprintf(fp, "\n------------------------------------------\n\n");
+    fflush(fp);
 }
 
 void print_payload(unsigned char *buf, int len) {
     int i;
-    printf("Payload:\n");
-    printf("Length: %d bytes\n", len);
+    fprintf(fp, "Payload:\n");
+    fprintf(fp, "Length: %d bytes\n", len);
     for (i = 0; i < len; i++) {
-        printf("%02x ", buf[i]);
+        fprintf(fp, "%02x ", buf[i]);
         if(i%8==7) printf("\n");
     }
-    printf("\n\n");
+    fprintf(fp, "\n\n");
 }
 
 // Function to get difference between two timespecs in micro or milli seconds, as specified by the flag
@@ -195,6 +207,9 @@ void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct 
         fflush(stdout);
         strcpy(next_hop,next_router);
         
+        print_ip_header(recv_buf);
+        print_icmp_header(recv_buf + IP_HDR_SIZE);
+
         if(((long)diff)<sleep_time_in_micro && i!=NUM_PING_TRY-1){
             // printf("Sleeping for %ld microseconds\n",sleep_time_in_micro-(long)diff);
             usleep(sleep_time_in_micro-(long)diff);
@@ -232,11 +247,11 @@ void calc_latency(int sockfd, char* packet,struct sockaddr_in* next_addr, int tt
         min_time_taken = min(time_taken, min_time_taken);
         
         // Check if the response is an ICMP echo reply
-        struct iphdr *ip_header = (struct iphdr *)recv_buf;
-        struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
+        // struct iphdr *ip_header = (struct iphdr *)recv_buf;
+        // struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
         // printf("\n");
-        // print_ip_header(recv_buf);
-        // print_icmp_header(recv_buf + IP_HDR_SIZE);
+        print_ip_header(recv_buf);
+        print_icmp_header(recv_buf + IP_HDR_SIZE);
         // print_payload(recv_buf + IP_HDR_SIZE + ICMP_HDR_SIZE, recv_len - IP_HDR_SIZE - ICMP_HDR_SIZE);
 
         if(time_unit == TIME_IN_MICRO)
@@ -289,11 +304,11 @@ void calc_bandwidth(int sockfd, char* data_packet,struct sockaddr_in* next_addr,
         clock_gettime(CLOCK_MONOTONIC, &end);
         
         // Check if the response is an ICMP echo reply
-        struct iphdr *ip_header = (struct iphdr *)recv_buf;
-        struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
+        // struct iphdr *ip_header = (struct iphdr *)recv_buf;
+        // struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
         // printf("\n");
-        // print_ip_header(recv_buf);
-        // print_icmp_header(recv_buf + IP_HDR_SIZE);
+        print_ip_header(recv_buf);
+        print_icmp_header(recv_buf + IP_HDR_SIZE);
         // print_payload(recv_buf + IP_HDR_SIZE + ICMP_HDR_SIZE, recv_len - IP_HDR_SIZE - ICMP_HDR_SIZE);
 
         printf("\nReceived %d bytes\t",recv_len);
@@ -356,13 +371,15 @@ int main(int argc, char *argv[]) {
     }
     
     int n,t,time_unit;
-    char c[20];
+    char c[10];
     printf("Enter the number of probes to be sent per link for finding latency and bandwidth: ");
     scanf("%d",&n);
     printf("Enter how many seconds apart each probe should be sent: ");
     scanf("%d",&t);
-    fflush(stdin);
-    printf("Do you want to calculate latency and bandwidth in microseconds or milliseconds? (u/m): ");
+    printf("Enter a output file name to which IP and ICMP Header will be printed for every packet recieved (abc.txt): ");
+    scanf("%s",out_file);
+    fp = fopen(out_file,"w");
+    printf("Do you want to calculate latency in microseconds or milliseconds? (u/m): ");
     scanf("%s",c);
     fflush(stdin);
     if(c[0]=='u' || c[0]=='U')
@@ -407,23 +424,6 @@ int main(int argc, char *argv[]) {
     // Initialize the packets
     char packet[PACKET_SIZE];
     char data_packet[DATA_PACKET_SIZE];
-    // struct iphdr *ip_packet = (struct iphdr *)packet;
-    // ip_packet->version = 4;
-    // ip_packet->ihl = 5;
-    // ip_packet->tos = 0;
-    // ip_packet->tot_len = htons(PACKET_SIZE);
-    // ip_packet->id = 0;
-    // ip_packet->frag_off = 0;
-    // ip_packet->ttl = 1;
-    // ip_packet->protocol = IPPROTO_ICMP;
-    // ip_packet->check = 0;
-    // char *host = get_ip_addr();
-    // ip_packet->saddr = inet_addr(host);
-    // free(host);
-    // ip_packet->daddr = dest_ip.s_addr;
-    // ip_packet->check = in_cksum((unsigned short *)ip_packet, IP_HDR_SIZE);
-
-    // print_ip_header(packet);
 
     // Latency measurement packet
     struct icmphdr *icmp_packet = (struct icmphdr *)(packet);
@@ -432,11 +432,11 @@ int main(int argc, char *argv[]) {
     icmp_packet->un.echo.id = htons(getpid());
     icmp_packet->un.echo.sequence = 0;
 
-    print_icmp_header(packet);
+    // print_icmp_header(packet);
 
     add_seq_chars(packet + ICMP_HDR_SIZE, PACKET_SIZE - ICMP_HDR_SIZE);
 
-    print_payload(packet + ICMP_HDR_SIZE, PACKET_SIZE - ICMP_HDR_SIZE);
+    // print_payload(packet + ICMP_HDR_SIZE, PACKET_SIZE - ICMP_HDR_SIZE);
 
     // Calculate the checksum for the ICMP packet
     icmp_packet->checksum = 0;
@@ -449,11 +449,11 @@ int main(int argc, char *argv[]) {
     icmp_data_packet->un.echo.id = htons(getpid());
     icmp_data_packet->un.echo.sequence = 0;
 
-    print_icmp_header(data_packet);
+    // print_icmp_header(data_packet);
 
     add_seq_chars(data_packet + ICMP_HDR_SIZE, DATA_PACKET_SIZE - ICMP_HDR_SIZE);
 
-    print_payload(data_packet + ICMP_HDR_SIZE, DATA_PACKET_SIZE - ICMP_HDR_SIZE);
+    // print_payload(data_packet + ICMP_HDR_SIZE, DATA_PACKET_SIZE - ICMP_HDR_SIZE);
 
     // Calculate the checksum for the ICMP packet
     icmp_data_packet->checksum = 0;
@@ -477,7 +477,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         min_time_taken = LATENCY_NA;
-        printf("----------------------------------------------\n");
+        printf("-----------------------------------------------------------------\n");
         printf("%d.\n", ttl);
         char next_hop[INET_ADDRSTRLEN];
         get_next_hop(sockfd, packet, &dest_addr, &dest_ip, next_hop, time_unit);
@@ -516,6 +516,8 @@ int main(int argc, char *argv[]) {
 
     // Close the socket
     close(sockfd);
+
+    fclose(fp);
 
     return 0;
 
