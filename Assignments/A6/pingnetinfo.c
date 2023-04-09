@@ -23,7 +23,7 @@
 #define NUM_PING_TRY 5
 #define TIME_IN_MICRO 1
 #define TIME_IN_MILLI 0
-#define ROUTE_PROBE_TIME 1000000
+#define ROUTE_PROBE_TIME 2000000
 #define LATENCY_NA 1e12
 #define DATA_PACKET_SIZE 1008
 #define DATA_RECV_SIZE 1096
@@ -172,7 +172,7 @@ void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct 
     socklen_t recv_addr_len = sizeof(recv_addr);
     char next_router[INET_ADDRSTRLEN];
     int recv_len;
-    printf("Sending %d ICMP packets each %d second apart to finalise the next hop\n",NUM_PING_TRY,(ROUTE_PROBE_TIME/1000000));
+    printf("Sending %d ICMP packets each %d seconds apart to finalise the next hop\n",NUM_PING_TRY,(ROUTE_PROBE_TIME/1000000));
     struct timespec start, end;
     int sleep_time_in_micro = ROUTE_PROBE_TIME;
     double diff=0;
@@ -408,7 +408,7 @@ int main(int argc, char *argv[]) {
         data_latencies[i] = LATENCY_NA;
     }
 
-    // Set the socket timeout to 1 second
+    // Set the socket timeout to 2 second
     struct timeval timeout;
 
     
@@ -464,8 +464,8 @@ int main(int argc, char *argv[]) {
     int done=0;
     // Loop through the TTL values
     for (ttl = 1; ttl <= MAX_HOPS; ttl++) {
-        // Set recv timeout to 1 second
-        timeout.tv_sec = 1;
+        // Set recv timeout to 2 second
+        timeout.tv_sec = 2;
         timeout.tv_usec = 0;
         if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
             printf("Error setting socket timeout: %s\n", strerror(errno));
