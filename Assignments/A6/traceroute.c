@@ -18,12 +18,14 @@
 #define MAX_RECV_SIZE 128
 #define ICMP_HDR_SIZE 8
 #define IP_HDR_SIZE 20
-#define START_ASCII 72
+#define START_ASCII 33
+#define END_ASCII 126
 #define NUM_PING_TRY 5
 #define TIME_IN_MICRO 1
 #define TIME_IN_MILLI 0
 #define ROUTE_PROBE_TIME 1000000
 #define LATENCY_NA 1e12
+#define DATA_PACKET_SIZE 1008
 
 const int MAX_HOPS = 30;
 
@@ -137,10 +139,17 @@ double max(double a, double b) {
 }
 
 // Function to add sequential binary numbers to the ICMP payload, given the starting number and the number of bytes to add
-void add_seq_nums(unsigned char *buf, int start, int num_bytes) {
-    int i;
-    for (i = 0; i < num_bytes; i++) {
-        buf[i] = start + i;
+void add_seq_chars(unsigned char *buf, int num_bytes) {
+    int i,j;
+    int start = START_ASCII;
+    int size_of_one = END_ASCII - START_ASCII + 1;
+    for(j=0;j<(num_bytes/size_of_one);j++){
+        for (i = 0; i < size_of_one; i++) {
+            buf[j*size_of_one+i] = start + i;
+        }
+    }
+    for(i=0;i<(num_bytes%size_of_one);i++){
+        buf[j*size_of_one+i] = start + i;
     }
 }
 
@@ -150,7 +159,7 @@ void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct 
     socklen_t recv_addr_len = sizeof(recv_addr);
     char next_router[INET_ADDRSTRLEN];
     int recv_len;
-    printf("Sending %d ICMP packets to finalise the next hop\n",NUM_PING_TRY);
+    printf("Sending %d ICMP packets each %d second apart to finalise the next hop\n",NUM_PING_TRY,(ROUTE_PROBE_TIME/1000000));
     struct timespec start, end;
     int sleep_time_in_micro = ROUTE_PROBE_TIME;
     long diff=0;
@@ -166,6 +175,7 @@ void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct 
         // Receive the response from the router
         if ((recv_len = recvfrom(sockfd, recv_buf, MAX_RECV_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addr_len)) <= 0) {
             printf("*\t");
+            fflush(stdout);
             strcpy(next_hop,"0.0.0.0");
             continue;
         }
@@ -177,6 +187,7 @@ void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct 
             continue;
         }
         printf("%s\t",next_router);
+        fflush(stdout);
         strcpy(next_hop,next_router);
         
         if(diff<sleep_time_in_micro){
@@ -185,9 +196,110 @@ void get_next_hop(int sockfd, char* packet,struct sockaddr_in* dest_addr,struct 
         }
     }
     printf("\nNext hop is %s\n",next_hop);
+    fflush(stdout);
 }
 
+// Function to calculate latency of the path
+void calc_latency(int sockfd, char* packet,struct sockaddr_in* next_addr, int ttl, double *latencies, int n, long sleep_time_in_micro){
+    struct timespec start, end;
+    char recv_buf[MAX_RECV_SIZE];
+    struct sockaddr_in recv_addr;
+    socklen_t recv_addr_len = sizeof(recv_addr);
+    int recv_len;
+    double time_taken=0,min_time_taken=LATENCY_NA;
 
+    for(int i=0;i<n;i++){
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        // Send the ICMP packet to the destination
+        if (sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)next_addr, sizeof(*next_addr)) <= 0) {
+            printf("Error sending packet: %s\n", strerror(errno));
+            exit(1);
+        }
+        
+        // Receive the response from the router
+        if ((recv_len = recvfrom(sockfd, recv_buf, MAX_RECV_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addr_len)) <= 0) {
+            printf("*\t");
+            fflush(stdout);
+            continue;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        time_taken = get_time_diff(&start, &end, TIME_IN_MICRO);
+        min_time_taken = min(time_taken, min_time_taken);
+        
+        // Check if the response is an ICMP echo reply
+        struct iphdr *ip_header = (struct iphdr *)recv_buf;
+        struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
+        // printf("\n");
+        // print_ip_header(recv_buf);
+        // print_icmp_header(recv_buf + IP_HDR_SIZE);
+        // print_payload(recv_buf + IP_HDR_SIZE + ICMP_HDR_SIZE, recv_len - IP_HDR_SIZE - ICMP_HDR_SIZE);
+
+        printf("%.3lf us\t", time_taken);
+        fflush(stdout);
+        if(time_taken<sleep_time_in_micro){
+            // printf("Sleeping for %ld microseconds\n",sleep_time_in_micro-(long)time_taken);
+            usleep(sleep_time_in_micro-(long)time_taken);
+        }
+    }
+    latencies[ttl] = min_time_taken;
+    printf("\n");
+    if(latencies[ttl-1] < LATENCY_NA)
+        printf("Latency of the Link: %.3lf us\n", min_time_taken - latencies[ttl-1]); //## Change to max(0, min_time_taken - latencies[ttl-1])
+    else
+        printf("Latency of the Link: NA\n");
+    fflush(stdout);
+}
+
+// Function to calculate bandwidth of the path
+void calc_bandwidth(int sockfd, char* packet,struct sockaddr_in* next_addr, int ttl, double *latencies, double *data_latencies, int n, long sleep_time_in_micro){
+    struct timespec start, end;
+    char recv_buf[MAX_RECV_SIZE];
+    struct sockaddr_in recv_addr;
+    socklen_t recv_addr_len = sizeof(recv_addr);
+    int recv_len;
+    double time_taken=0,min_time_taken=LATENCY_NA;
+    
+    for(int i=0;i<n;i++){
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        // Send the ICMP packet to the destination
+        if (sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)next_addr, sizeof(*next_addr)) <= 0) {
+            printf("Error sending packet: %s\n", strerror(errno));
+            exit(1);
+        }
+        
+        // Receive the response from the router
+        if ((recv_len = recvfrom(sockfd, recv_buf, MAX_RECV_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addr_len)) <= 0) {
+            printf("*\t");
+            fflush(stdout);
+            continue;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        time_taken = get_time_diff(&start, &end, TIME_IN_MICRO);
+        min_time_taken = min(time_taken, min_time_taken);
+        
+        // Check if the response is an ICMP echo reply
+        struct iphdr *ip_header = (struct iphdr *)recv_buf;
+        struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
+        // printf("\n");
+        // print_ip_header(recv_buf);
+        // print_icmp_header(recv_buf + IP_HDR_SIZE);
+        // print_payload(recv_buf + IP_HDR_SIZE + ICMP_HDR_SIZE, recv_len - IP_HDR_SIZE - ICMP_HDR_SIZE);
+
+        printf("%.3lf us\t", time_taken);
+        fflush(stdout);
+        if(time_taken<sleep_time_in_micro){
+            // printf("Sleeping for %ld microseconds\n",sleep_time_in_micro-(long)time_taken);
+            usleep(sleep_time_in_micro-(long)time_taken);
+        }
+    }
+    latencies[ttl] = min_time_taken;
+    printf("\n");
+    if(latencies[ttl-1] < LATENCY_NA)
+        printf("Latency of the Link: %.3lf us\n", min_time_taken - latencies[ttl-1]); //## Change to max(0, min_time_taken - latencies[ttl-1])
+    else
+        printf("Latency of the Link: NA\n");
+    fflush(stdout);
+}
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -224,10 +336,9 @@ int main(int argc, char *argv[]) {
     char recv_buf[MAX_RECV_SIZE];
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
-    char router_ip_str[INET_ADDRSTRLEN];
     int recv_len;
     
-    struct timespec tot_start, tot_end, start, end;
+
     double tot_time_taken = 0.0, time_taken = 0.0, min_time_taken = 1e15;
     double latencies[MAX_HOPS+1];
     latencies[0] = 0.0;
@@ -238,19 +349,7 @@ int main(int argc, char *argv[]) {
 
     // Set the socket timeout to 1 second
     struct timeval timeout;
-    timeout.tv_sec = 1;
-    timeout.tv_usec = 0;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
-        printf("Error setting socket timeout: %s\n", strerror(errno));
-        return 1;
-    }
 
-    // Set socket to not attach the IP header
-    // int one = 1;
-    // if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) != 0) {
-    //     printf("Error setting socket option: %s\n", strerror(errno));
-    //     return 1;
-    // }
     
     // Initialize the destination address structure
     struct sockaddr_in dest_addr,next_addr;
@@ -261,8 +360,9 @@ int main(int argc, char *argv[]) {
     
     next_addr.sin_family = AF_INET;
 
-    // Initialize the packet
+    // Initialize the packets
     char packet[PACKET_SIZE];
+    char data_packet[DATA_PACKET_SIZE];
     // struct iphdr *ip_packet = (struct iphdr *)packet;
     // ip_packet->version = 4;
     // ip_packet->ihl = 5;
@@ -281,7 +381,7 @@ int main(int argc, char *argv[]) {
 
     // print_ip_header(packet);
 
-    // struct icmphdr *icmp_packet = (struct icmphdr *)(packet + IP_HDR_SIZE);
+    // Latency measurement packet
     struct icmphdr *icmp_packet = (struct icmphdr *)(packet);
     icmp_packet->type = ICMP_ECHO;
     icmp_packet->code = 0;
@@ -290,7 +390,7 @@ int main(int argc, char *argv[]) {
 
     print_icmp_header(packet);
 
-    add_seq_nums(packet + ICMP_HDR_SIZE, START_ASCII, PACKET_SIZE - ICMP_HDR_SIZE);
+    add_seq_chars(packet + ICMP_HDR_SIZE, PACKET_SIZE - ICMP_HDR_SIZE);
 
     print_payload(packet + ICMP_HDR_SIZE, PACKET_SIZE - ICMP_HDR_SIZE);
 
@@ -298,22 +398,42 @@ int main(int argc, char *argv[]) {
     icmp_packet->checksum = 0;
     icmp_packet->checksum = in_cksum((unsigned short *)icmp_packet, PACKET_SIZE);
 
-    clock_gettime(CLOCK_MONOTONIC, &tot_start);
+    // Bandwidth measurement packet
+    struct icmphdr *icmp_data_packet = (struct icmphdr *)(data_packet);
+    icmp_data_packet->type = ICMP_ECHO;
+    icmp_data_packet->code = 0;
+    icmp_data_packet->un.echo.id = htons(getpid());
+    icmp_data_packet->un.echo.sequence = 0;
+
+    print_icmp_header(data_packet);
+
+    add_seq_chars(data_packet + ICMP_HDR_SIZE, DATA_PACKET_SIZE - ICMP_HDR_SIZE);
+
+    print_payload(data_packet + ICMP_HDR_SIZE, DATA_PACKET_SIZE - ICMP_HDR_SIZE);
+
+    // Calculate the checksum for the ICMP packet
+    icmp_data_packet->checksum = 0;
+    icmp_data_packet->checksum = in_cksum((unsigned short *)icmp_data_packet, DATA_PACKET_SIZE);
+
 
     printf("traceroute to %s (%s), %d hops max, %d byte packets\n", server->h_name, inet_ntoa(dest_ip), MAX_HOPS, PACKET_SIZE);
     int done=0;
     // Loop through the TTL values
     for (ttl = 1; ttl <= MAX_HOPS; ttl++) {
+        // Set recv timeout to 1 second
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
+        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
+            printf("Error setting socket timeout: %s\n", strerror(errno));
+            return 1;
+        }
         // Set the TTL value for the socket
         if (setsockopt(sockfd, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl)) != 0) {
             printf("Error setting TTL value: %s\n", strerror(errno));
             return 1;
         }
         min_time_taken = LATENCY_NA;
-        // ip_packet->ttl = ttl;
-        // ip_packet->id = htons(ttl);
-        // ip_packet->check = 0;
-        // ip_packet->check = in_cksum((unsigned short *)ip_packet, IP_HDR_SIZE);
+
         printf("%d.\n", ttl);
         char next_hop[INET_ADDRSTRLEN];
         get_next_hop(sockfd, packet, &dest_addr, &dest_ip, next_hop);
@@ -322,58 +442,24 @@ int main(int argc, char *argv[]) {
             printf("Hence, Latency and Bandwidth cannot be calculated\n");
             continue;
         }
-        printf("%s\n",next_hop);
+        printf("Calculating latency and bandwidth for the next hop: %s\n",next_hop);
         next_addr.sin_addr.s_addr = inet_addr(next_hop);
+        
+        if(strcmp(next_hop,inet_ntoa(dest_ip))==0) done=1;
+
         long sleep_time_in_micro = t*1000000;
-        for(int i=0;i<n;i++){
-            // Set the TTL value for the socket
-            if (setsockopt(sockfd, IPPROTO_IP, IP_TTL, &MAX_HOPS, sizeof(MAX_HOPS)) != 0) {
-                printf("Error setting TTL value: %s\n", strerror(errno));
-                return 1;
-            }
-            clock_gettime(CLOCK_MONOTONIC, &start);
-            // Send the ICMP packet to the destination
-            if (sendto(sockfd, packet, PACKET_SIZE, 0, (struct sockaddr *)&next_addr, sizeof(next_addr)) <= 0) {
-                printf("Error sending packet: %s\n", strerror(errno));
-                return 1;
-            }
-            
-            // Receive the response from the router
-            if ((recv_len = recvfrom(sockfd, recv_buf, MAX_RECV_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addr_len)) <= 0) {
-                printf("*\t");
-                continue;
-            }
-            clock_gettime(CLOCK_MONOTONIC, &end);
-            time_taken = get_time_diff(&start, &end, TIME_IN_MICRO);
-            min_time_taken = min(time_taken, min_time_taken);
-            // Print the IP address of the router that responded
-            if (inet_ntop(AF_INET, &recv_addr.sin_addr, router_ip_str, INET_ADDRSTRLEN) == NULL) {
-                printf("Invalid Source IP address\n");
-                continue;
-            }
-            
-            // Check if the response is an ICMP echo reply
-            struct iphdr *ip_header = (struct iphdr *)recv_buf;
-            struct icmphdr *icmp_reply = (struct icmphdr *)(recv_buf + (ip_header->ihl * 4));
-            // printf("\n");
-            // print_ip_header(recv_buf);
-            // print_icmp_header(recv_buf + IP_HDR_SIZE);
-            // print_payload(recv_buf + IP_HDR_SIZE + ICMP_HDR_SIZE, recv_len - IP_HDR_SIZE - ICMP_HDR_SIZE);
-            if (ip_header->saddr == dest_ip.s_addr) {
-                done=1;
-            }
-            printf("%.3lf us\t", time_taken);
-            if(time_taken<sleep_time_in_micro){
-                printf("Sleeping for %ld microseconds\n",sleep_time_in_micro-(long)time_taken);
-                usleep(sleep_time_in_micro-time_taken);
-            }
+
+        printf("Sending %d ICMP packets each %d seconds apart to calculate latencies\n",n,t);
+        //Set recv timeout to t second
+        timeout.tv_sec = t;
+        timeout.tv_usec = 0;
+        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
+            printf("Error setting socket timeout: %s\n", strerror(errno));
+            return 1;
         }
-        latencies[ttl] = min_time_taken;
-        printf("\n");
-        if(latencies[ttl-1] < LATENCY_NA)
-            printf("Latency of the Link: %.3lf us\n", min_time_taken - latencies[ttl-1]); //## Change to max(0, min_time_taken - latencies[ttl-1])
-        else
-            printf("Latency of the Link: NA\n");
+
+        calc_latency(sockfd, packet, &next_addr, ttl, latencies, n, sleep_time_in_micro);
+
         if(done){
             printf("Destination Reached\n");
             break;
